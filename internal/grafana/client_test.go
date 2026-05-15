@@ -125,7 +125,9 @@ func TestQueryLogs_Success(t *testing.T) {
 		if r.FormValue("limit") != "5" {
 			t.Errorf("unexpected limit: %q", r.FormValue("limit"))
 		}
-		fmt.Fprint(w, lines)
+		if _, err := fmt.Fprint(w, lines); err != nil {
+			t.Errorf("writing response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -215,7 +217,9 @@ func TestQueryMetricsRange_Success(t *testing.T) {
 		if r.URL.Query().Get("step") != "60s" {
 			t.Errorf("unexpected step: %q", r.URL.Query().Get("step"))
 		}
-		fmt.Fprint(w, payload)
+		if _, err := fmt.Fprint(w, payload); err != nil {
+			t.Errorf("writing response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -257,7 +261,9 @@ func TestQueryMetricsInstant_Success(t *testing.T) {
 		if r.URL.Query().Get("time") != "" {
 			t.Errorf("expected no time param, got %q", r.URL.Query().Get("time"))
 		}
-		fmt.Fprint(w, payload)
+		if _, err := fmt.Fprint(w, payload); err != nil {
+			t.Errorf("writing response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -276,7 +282,9 @@ func TestQueryMetricsInstant_WithTime(t *testing.T) {
 		if r.URL.Query().Get("time") != "2026-04-28T00:00:00Z" {
 			t.Errorf("expected time param, got %q", r.URL.Query().Get("time"))
 		}
-		fmt.Fprint(w, `{"status":"success","data":{"resultType":"vector","result":[]}}`)
+		if _, err := fmt.Fprint(w, `{"status":"success","data":{"resultType":"vector","result":[]}}`); err != nil {
+			t.Errorf("writing response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -351,7 +359,7 @@ var _ Querier = (*Client)(nil)
 
 // Unset env vars that could leak between tests.
 func init() {
-	os.Unsetenv("GRAFANA_URL")
-	os.Unsetenv("GRAFANA_COOKIE")
-	os.Unsetenv("GRAFANA_TOKEN")
+	_ = os.Unsetenv("GRAFANA_URL")
+	_ = os.Unsetenv("GRAFANA_COOKIE")
+	_ = os.Unsetenv("GRAFANA_TOKEN")
 }

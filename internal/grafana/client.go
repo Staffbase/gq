@@ -132,7 +132,9 @@ func (c *Client) QueryLogs(query, start, end string, limit int) ([]byte, error) 
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, readBody(resp.Body))
@@ -168,7 +170,9 @@ func (c *Client) QueryMetricsRange(query, start, end, step string) ([]byte, erro
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, readBody(resp.Body))
@@ -190,7 +194,9 @@ func (c *Client) QueryMetricsInstant(query, t string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, readBody(resp.Body))
@@ -212,7 +218,9 @@ func (c *Client) ListLabelValues(label, match string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, readBody(resp.Body))
