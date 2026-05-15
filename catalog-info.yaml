@@ -1,0 +1,11 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: gq
+  description: CLI and MCP server for querying logs and metrics via Grafana datasource proxy
+  annotations:
+    github.com/project-slug: Staffbase/gq
+spec:
+  type: tool
+  lifecycle: experimental
+  owner: group:default/diablo
