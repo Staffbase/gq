@@ -25,10 +25,15 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 )
 
+// defaultHTTPTimeout bounds every request the Client makes so a slow or
+// unreachable Grafana cannot hang the CLI or MCP server indefinitely.
+const defaultHTTPTimeout = 30 * time.Second
+
 // Querier is the interface implemented by Client.
-// Both obs-cli and obs-mcp depend on this interface;
+// Both the gq CLI and the `gq mcp` server depend on this interface;
 // tests inject a fake implementation.
 type Querier interface {
 	QueryLogs(query, start, end string, limit int) ([]byte, error)
@@ -49,6 +54,15 @@ type Client struct {
 	LogsDatasourceUID string
 	// MetricsDatasourceUID is the Grafana datasource UID for VictoriaMetrics.
 	MetricsDatasourceUID string
+	// HTTPClient is optional; when nil a client with defaultHTTPTimeout is used.
+	HTTPClient *http.Client
+}
+
+func (c *Client) httpClient() *http.Client {
+	if c.HTTPClient != nil {
+		return c.HTTPClient
+	}
+	return &http.Client{Timeout: defaultHTTPTimeout}
 }
 
 // NewClientFromEnv constructs a Client using the following precedence:
@@ -95,7 +109,7 @@ func (c *Client) do(method, endpoint string, body io.Reader, contentType string)
 	} else if c.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}
-	return http.DefaultClient.Do(req)
+	return c.httpClient().Do(req)
 }
 
 // QueryLogs runs a LogsQL query against VictoriaLogs via the Grafana proxy.

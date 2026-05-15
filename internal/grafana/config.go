@@ -18,16 +18,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
-	"time"
 )
 
 // Config represents a stored Grafana connection configuration.
 type Config struct {
-	URL          string    `json:"url"`
-	Token        string    `json:"token"`
-	RefreshToken string    `json:"refresh_token,omitempty"`
-	ExpiresAt    time.Time `json:"expires_at,omitempty"`
+	URL   string `json:"url"`
+	Token string `json:"token"`
 	// LogsDatasourceUID is the Grafana datasource UID for VictoriaLogs.
 	// Defaults to "victorialogs" if unset.
 	LogsDatasourceUID string `json:"logs_datasource_uid,omitempty"`
@@ -53,23 +49,6 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("config file %s: token is required", path)
 	}
 	return &cfg, nil
-}
-
-// SaveConfig writes a Config to the given JSON file path, creating
-// parent directories as needed. The file is created with 0600 permissions.
-func SaveConfig(path string, cfg *Config) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return fmt.Errorf("creating config directory: %w", err)
-	}
-	data, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshaling config: %w", err)
-	}
-	data = append(data, '\n')
-	if err := os.WriteFile(path, data, 0600); err != nil {
-		return fmt.Errorf("writing config file: %w", err)
-	}
-	return nil
 }
 
 // NewClientFromConfig loads a config file and returns a Client configured

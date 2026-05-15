@@ -18,7 +18,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 )
 
 func TestLoadConfig_Valid(t *testing.T) {
@@ -81,37 +80,6 @@ func TestLoadConfig_InvalidJSON(t *testing.T) {
 	_, err := LoadConfig(path)
 	if err == nil {
 		t.Fatal("expected error for invalid JSON")
-	}
-}
-
-func TestSaveConfig_CreatesFileAndDirs(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "sub", "dir", "cfg.json")
-	cfg := &Config{
-		URL:       "https://grafana.example.com",
-		Token:     "glsa_token",
-		ExpiresAt: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
-	}
-	if err := SaveConfig(path, cfg); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Verify file permissions
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatalf("stat: %v", err)
-	}
-	if info.Mode().Perm() != 0600 {
-		t.Errorf("expected 0600 permissions, got %o", info.Mode().Perm())
-	}
-
-	// Verify round-trip
-	loaded, err := LoadConfig(path)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if loaded.URL != cfg.URL || loaded.Token != cfg.Token {
-		t.Errorf("round-trip mismatch: %+v", loaded)
 	}
 }
 

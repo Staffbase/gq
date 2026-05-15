@@ -17,8 +17,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"os"
 
 	"github.com/Staffbase/gq/internal/grafana"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -41,11 +39,7 @@ func runMCP(_ *cobra.Command, _ []string) error {
 	}
 	s := server.NewMCPServer("gq", "0.1.0", server.WithToolCapabilities(false))
 	registerTools(s, client)
-	if err := server.ServeStdio(s); err != nil {
-		fmt.Fprintf(os.Stderr, "server error: %v\n", err)
-		return err
-	}
-	return nil
+	return server.ServeStdio(s)
 }
 
 func registerTools(s *server.MCPServer, q grafana.Querier) {
@@ -64,7 +58,10 @@ func registerTools(s *server.MCPServer, q grafana.Querier) {
 			mcp.WithNumber("limit", mcp.Description("Max log lines to return (default 100).")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			args := req.Params.Arguments.(map[string]any)
+			args, ok := req.Params.Arguments.(map[string]any)
+			if !ok {
+				return mcp.NewToolResultError("invalid arguments: expected object"), nil
+			}
 			query, _ := args["query"].(string)
 			start, _ := args["start"].(string)
 			end, _ := args["end"].(string)
@@ -92,7 +89,10 @@ func registerTools(s *server.MCPServer, q grafana.Querier) {
 			mcp.WithString("step", mcp.Description("Resolution step (default: 60s).")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			args := req.Params.Arguments.(map[string]any)
+			args, ok := req.Params.Arguments.(map[string]any)
+			if !ok {
+				return mcp.NewToolResultError("invalid arguments: expected object"), nil
+			}
 			query, _ := args["query"].(string)
 			start, _ := args["start"].(string)
 			end, _ := args["end"].(string)
@@ -124,7 +124,10 @@ func registerTools(s *server.MCPServer, q grafana.Querier) {
 			mcp.WithString("time", mcp.Description("Evaluation time (RFC3339 or Unix timestamp). Defaults to now.")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			args := req.Params.Arguments.(map[string]any)
+			args, ok := req.Params.Arguments.(map[string]any)
+			if !ok {
+				return mcp.NewToolResultError("invalid arguments: expected object"), nil
+			}
 			query, _ := args["query"].(string)
 			t, _ := args["time"].(string)
 			raw, err := q.QueryMetricsInstant(query, t)
@@ -148,7 +151,10 @@ func registerTools(s *server.MCPServer, q grafana.Querier) {
 			mcp.WithString("match", mcp.Description("Optional PromQL selector to narrow results.")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			args := req.Params.Arguments.(map[string]any)
+			args, ok := req.Params.Arguments.(map[string]any)
+			if !ok {
+				return mcp.NewToolResultError("invalid arguments: expected object"), nil
+			}
 			label, _ := args["label"].(string)
 			match, _ := args["match"].(string)
 			values, err := q.ListLabelValues(label, match)
