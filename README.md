@@ -44,7 +44,7 @@ Alternatively, set environment variables directly:
 
 ```sh
 export GRAFANA_URL=https://your-grafana-instance.example.com
-export GRAFANA_TOKEN=glsa_...
+export GRAFANA_SERVICE_ACCOUNT_TOKEN=glsa_...
 ```
 
 ## CLI Usage

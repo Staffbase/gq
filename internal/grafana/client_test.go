@@ -38,17 +38,17 @@ func TestNewClientFromEnv_MissingURL(t *testing.T) {
 func TestNewClientFromEnv_MissingAuth(t *testing.T) {
 	t.Setenv("GRAFANA_URL", "http://grafana.example.com")
 	t.Setenv("GRAFANA_COOKIE", "")
-	t.Setenv("GRAFANA_TOKEN", "")
+	t.Setenv("GRAFANA_SERVICE_ACCOUNT_TOKEN", "")
 	_, err := NewClientFromEnv()
 	if err == nil {
-		t.Fatal("expected error when neither GRAFANA_COOKIE nor GRAFANA_TOKEN is set")
+		t.Fatal("expected error when neither GRAFANA_COOKIE nor GRAFANA_SERVICE_ACCOUNT_TOKEN is set")
 	}
 }
 
 func TestNewClientFromEnv_CookieAuth(t *testing.T) {
 	t.Setenv("GRAFANA_URL", "http://grafana.example.com")
 	t.Setenv("GRAFANA_COOKIE", "grafana_session=abc123")
-	t.Setenv("GRAFANA_TOKEN", "")
+	t.Setenv("GRAFANA_SERVICE_ACCOUNT_TOKEN", "")
 	c, err := NewClientFromEnv()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -61,7 +61,7 @@ func TestNewClientFromEnv_CookieAuth(t *testing.T) {
 func TestNewClientFromEnv_TokenAuth(t *testing.T) {
 	t.Setenv("GRAFANA_URL", "http://grafana.example.com")
 	t.Setenv("GRAFANA_COOKIE", "")
-	t.Setenv("GRAFANA_TOKEN", "glsa_token123")
+	t.Setenv("GRAFANA_SERVICE_ACCOUNT_TOKEN", "glsa_token123")
 	c, err := NewClientFromEnv()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -74,7 +74,7 @@ func TestNewClientFromEnv_TokenAuth(t *testing.T) {
 func TestNewClientFromEnv_CookiePrecedence(t *testing.T) {
 	t.Setenv("GRAFANA_URL", "http://grafana.example.com")
 	t.Setenv("GRAFANA_COOKIE", "grafana_session=abc")
-	t.Setenv("GRAFANA_TOKEN", "glsa_token")
+	t.Setenv("GRAFANA_SERVICE_ACCOUNT_TOKEN", "glsa_token")
 	c, err := NewClientFromEnv()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -361,5 +361,5 @@ var _ Querier = (*Client)(nil)
 func init() {
 	_ = os.Unsetenv("GRAFANA_URL")
 	_ = os.Unsetenv("GRAFANA_COOKIE")
-	_ = os.Unsetenv("GRAFANA_TOKEN")
+	_ = os.Unsetenv("GRAFANA_SERVICE_ACCOUNT_TOKEN")
 }
