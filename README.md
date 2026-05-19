@@ -28,23 +28,25 @@ Config file format (`~/.config/gq/prod.json`):
 {
   "url": "https://your-grafana-instance.example.com",
   "token": "glsa_...",
-  "logs_datasource_uid": "victorialogs",
-  "metrics_datasource_uid": "victoriametrics"
+  "logs_datasource_uid": "<find in Grafana under Administration → Data Sources>",
+  "metrics_datasource_uid": "<find in Grafana under Administration → Data Sources>"
 }
 ```
 
-| Field | Required | Default | Description |
-|---|---|---|---|
-| `url` | yes | — | Grafana base URL |
-| `token` | yes | — | Grafana service account or API token |
-| `logs_datasource_uid` | no | `victorialogs` | Datasource UID for VictoriaLogs |
-| `metrics_datasource_uid` | no | `victoriametrics` | Datasource UID for VictoriaMetrics |
+| Field | Required | Description |
+|---|---|---|
+| `url` | yes | Grafana base URL |
+| `token` | yes | Grafana service account or API token |
+| `logs_datasource_uid` | yes | UID of the VictoriaLogs datasource — find it in Grafana under Administration → Data Sources |
+| `metrics_datasource_uid` | yes | UID of the VictoriaMetrics datasource — find it in Grafana under Administration → Data Sources |
 
 Alternatively, set environment variables directly:
 
 ```sh
 export GRAFANA_URL=https://your-grafana-instance.example.com
 export GRAFANA_SERVICE_ACCOUNT_TOKEN=glsa_...
+export GRAFANA_LOGS_DATASOURCE_UID=<your-logs-datasource-uid>
+export GRAFANA_METRICS_DATASOURCE_UID=<your-metrics-datasource-uid>
 ```
 
 ## CLI Usage

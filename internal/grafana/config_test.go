@@ -23,7 +23,7 @@ import (
 func TestLoadConfig_Valid(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "cfg.json")
-	data := `{"url":"https://grafana.example.com","token":"glsa_abc123"}`
+	data := `{"url":"https://grafana.example.com","token":"glsa_abc123","logs_datasource_uid":"my-logs","metrics_datasource_uid":"my-metrics"}`
 	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestLoadConfig_InvalidJSON(t *testing.T) {
 func TestNewClientFromConfig_Success(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "cfg.json")
-	data := `{"url":"https://grafana.example.com","token":"glsa_abc"}`
+	data := `{"url":"https://grafana.example.com","token":"glsa_abc","logs_datasource_uid":"my-logs","metrics_datasource_uid":"my-metrics"}`
 	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestNewClientFromConfig_Success(t *testing.T) {
 func TestNewClientFromEnv_ConfigFilePrecedence(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "cfg.json")
-	data := `{"url":"https://from-config.example.com","token":"config_token"}`
+	data := `{"url":"https://from-config.example.com","token":"config_token","logs_datasource_uid":"my-logs","metrics_datasource_uid":"my-metrics"}`
 	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
 		t.Fatal(err)
 	}

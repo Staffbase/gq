@@ -25,11 +25,11 @@ type Config struct {
 	URL   string `json:"url"`
 	Token string `json:"token"`
 	// LogsDatasourceUID is the Grafana datasource UID for VictoriaLogs.
-	// Defaults to "victorialogs" if unset.
-	LogsDatasourceUID string `json:"logs_datasource_uid,omitempty"`
+	// Find it in Grafana under Administration → Data Sources → <datasource> → UID.
+	LogsDatasourceUID string `json:"logs_datasource_uid"`
 	// MetricsDatasourceUID is the Grafana datasource UID for VictoriaMetrics.
-	// Defaults to "victoriametrics" if unset.
-	MetricsDatasourceUID string `json:"metrics_datasource_uid,omitempty"`
+	// Find it in Grafana under Administration → Data Sources → <datasource> → UID.
+	MetricsDatasourceUID string `json:"metrics_datasource_uid"`
 }
 
 // LoadConfig reads a Config from the given JSON file path.
@@ -48,29 +48,26 @@ func LoadConfig(path string) (*Config, error) {
 	if cfg.Token == "" {
 		return nil, fmt.Errorf("config file %s: token is required", path)
 	}
+	if cfg.LogsDatasourceUID == "" {
+		return nil, fmt.Errorf("config file %s: logs_datasource_uid is required (find it in Grafana under Administration → Data Sources)", path)
+	}
+	if cfg.MetricsDatasourceUID == "" {
+		return nil, fmt.Errorf("config file %s: metrics_datasource_uid is required (find it in Grafana under Administration → Data Sources)", path)
+	}
 	return &cfg, nil
 }
 
 // NewClientFromConfig loads a config file and returns a Client configured
-// with token-based auth. Datasource UIDs default to "victorialogs" and
-// "victoriametrics" if not specified in the config file.
+// with token-based auth.
 func NewClientFromConfig(path string) (*Client, error) {
 	cfg, err := LoadConfig(path)
 	if err != nil {
 		return nil, err
 	}
-	logsUID := cfg.LogsDatasourceUID
-	if logsUID == "" {
-		logsUID = "victorialogs"
-	}
-	metricsUID := cfg.MetricsDatasourceUID
-	if metricsUID == "" {
-		metricsUID = "victoriametrics"
-	}
 	return &Client{
 		BaseURL:              cfg.URL,
 		Token:                cfg.Token,
-		LogsDatasourceUID:    logsUID,
-		MetricsDatasourceUID: metricsUID,
+		LogsDatasourceUID:    cfg.LogsDatasourceUID,
+		MetricsDatasourceUID: cfg.MetricsDatasourceUID,
 	}, nil
 }

@@ -66,14 +66,14 @@ func (c *Client) httpClient() *http.Client {
 }
 
 // NewClientFromEnv constructs a Client using the following precedence:
-//  1. GRAFANA_CONFIG env var → load config file (token auth)
-//  2. GRAFANA_URL + (GRAFANA_SERVICE_ACCOUNT_TOKEN | GRAFANA_COOKIE) env vars
+//  1. GRAFANA_CONFIG env var → load config file (all settings in the file)
+//  2. Individual env vars: GRAFANA_URL, GRAFANA_SERVICE_ACCOUNT_TOKEN or
+//     GRAFANA_COOKIE, GRAFANA_LOGS_DATASOURCE_UID, GRAFANA_METRICS_DATASOURCE_UID
 //
-// The env var name GRAFANA_SERVICE_ACCOUNT_TOKEN matches grafana/mcp-grafana's
-// convention so a single env var works across gq, mcp-grafana, and any future
-// MCP server wrapped via gq-auth.
+// All fields are required. Find datasource UIDs in Grafana under
+// Administration → Data Sources → <datasource> → UID.
 //
-// Returns an error if no valid configuration is found.
+// Returns an error if any required field is missing.
 func NewClientFromEnv() (*Client, error) {
 	// 1. Config file path from env.
 	if cfgPath := os.Getenv("GRAFANA_CONFIG"); cfgPath != "" {
@@ -90,12 +90,20 @@ func NewClientFromEnv() (*Client, error) {
 	if cookie == "" && token == "" {
 		return nil, fmt.Errorf("either GRAFANA_SERVICE_ACCOUNT_TOKEN or GRAFANA_COOKIE environment variable is required")
 	}
+	logsUID := os.Getenv("GRAFANA_LOGS_DATASOURCE_UID")
+	if logsUID == "" {
+		return nil, fmt.Errorf("GRAFANA_LOGS_DATASOURCE_UID environment variable is required (find it in Grafana under Administration → Data Sources)")
+	}
+	metricsUID := os.Getenv("GRAFANA_METRICS_DATASOURCE_UID")
+	if metricsUID == "" {
+		return nil, fmt.Errorf("GRAFANA_METRICS_DATASOURCE_UID environment variable is required (find it in Grafana under Administration → Data Sources)")
+	}
 	return &Client{
 		BaseURL:              strings.TrimRight(baseURL, "/"),
 		Cookie:               cookie,
 		Token:                token,
-		LogsDatasourceUID:    "victorialogs",
-		MetricsDatasourceUID: "victoriametrics",
+		LogsDatasourceUID:    logsUID,
+		MetricsDatasourceUID: metricsUID,
 	}, nil
 }
 
