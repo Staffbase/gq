@@ -67,7 +67,11 @@ func (c *Client) httpClient() *http.Client {
 
 // NewClientFromEnv constructs a Client using the following precedence:
 //  1. GRAFANA_CONFIG env var → load config file (token auth)
-//  2. GRAFANA_URL + GRAFANA_COOKIE/GRAFANA_TOKEN env vars
+//  2. GRAFANA_URL + (GRAFANA_SERVICE_ACCOUNT_TOKEN | GRAFANA_COOKIE) env vars
+//
+// The env var name GRAFANA_SERVICE_ACCOUNT_TOKEN matches grafana/mcp-grafana's
+// convention so a single env var works across gq, mcp-grafana, and any future
+// MCP server wrapped via gq-auth.
 //
 // Returns an error if no valid configuration is found.
 func NewClientFromEnv() (*Client, error) {
@@ -82,9 +86,9 @@ func NewClientFromEnv() (*Client, error) {
 		return nil, fmt.Errorf("GRAFANA_URL environment variable is required (or set GRAFANA_CONFIG)")
 	}
 	cookie := os.Getenv("GRAFANA_COOKIE")
-	token := os.Getenv("GRAFANA_TOKEN")
+	token := os.Getenv("GRAFANA_SERVICE_ACCOUNT_TOKEN")
 	if cookie == "" && token == "" {
-		return nil, fmt.Errorf("either GRAFANA_COOKIE or GRAFANA_TOKEN environment variable is required")
+		return nil, fmt.Errorf("either GRAFANA_SERVICE_ACCOUNT_TOKEN or GRAFANA_COOKIE environment variable is required")
 	}
 	return &Client{
 		BaseURL:              strings.TrimRight(baseURL, "/"),

@@ -113,7 +113,7 @@ func TestNewClientFromEnv_ConfigFilePrecedence(t *testing.T) {
 
 	t.Setenv("GRAFANA_CONFIG", path)
 	t.Setenv("GRAFANA_URL", "https://from-env.example.com")
-	t.Setenv("GRAFANA_TOKEN", "env_token")
+	t.Setenv("GRAFANA_SERVICE_ACCOUNT_TOKEN", "env_token")
 
 	c, err := NewClientFromEnv()
 	if err != nil {
@@ -132,7 +132,7 @@ func TestNewClientFromEnv_BadConfigFile(t *testing.T) {
 	t.Setenv("GRAFANA_CONFIG", "/nonexistent/file.json")
 	t.Setenv("GRAFANA_URL", "")
 	t.Setenv("GRAFANA_COOKIE", "")
-	t.Setenv("GRAFANA_TOKEN", "")
+	t.Setenv("GRAFANA_SERVICE_ACCOUNT_TOKEN", "")
 
 	_, err := NewClientFromEnv()
 	if err == nil {
