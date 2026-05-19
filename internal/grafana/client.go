@@ -128,13 +128,21 @@ func (c *Client) do(method, endpoint string, body io.Reader, contentType string)
 // QueryLogs runs a LogsQL query against VictoriaLogs via the Grafana proxy.
 // Returns raw NDJSON bytes.
 func (c *Client) QueryLogs(query, start, end string, limit int) ([]byte, error) {
+	startTS, err := resolveTime(start)
+	if err != nil {
+		return nil, err
+	}
+	endTS, err := resolveTime(end)
+	if err != nil {
+		return nil, err
+	}
 	form := url.Values{}
 	form.Set("query", query)
-	if start != "" {
-		form.Set("start", start)
+	if startTS != "" {
+		form.Set("start", startTS)
 	}
-	if end != "" {
-		form.Set("end", end)
+	if endTS != "" {
+		form.Set("end", endTS)
 	}
 	if limit > 0 {
 		form.Set("limit", fmt.Sprintf("%d", limit))
@@ -175,10 +183,18 @@ func (c *Client) QueryLogs(query, start, end string, limit int) ([]byte, error) 
 // QueryMetricsRange runs a PromQL range query against VictoriaMetrics via the Grafana proxy.
 // Returns the raw JSON response body.
 func (c *Client) QueryMetricsRange(query, start, end, step string) ([]byte, error) {
+	startTS, err := resolveTime(start)
+	if err != nil {
+		return nil, err
+	}
+	endTS, err := resolveTime(end)
+	if err != nil {
+		return nil, err
+	}
 	params := url.Values{}
 	params.Set("query", query)
-	params.Set("start", start)
-	params.Set("end", end)
+	params.Set("start", startTS)
+	params.Set("end", endTS)
 	params.Set("step", step)
 
 	endpoint := c.BaseURL + "/api/datasources/proxy/uid/" + c.MetricsDatasourceUID + "/api/v1/query_range?" + params.Encode()
@@ -199,10 +215,14 @@ func (c *Client) QueryMetricsRange(query, start, end, step string) ([]byte, erro
 // QueryMetricsInstant runs a PromQL instant query against VictoriaMetrics.
 // Returns the raw JSON response body.
 func (c *Client) QueryMetricsInstant(query, t string) ([]byte, error) {
+	tTS, err := resolveTime(t)
+	if err != nil {
+		return nil, err
+	}
 	params := url.Values{}
 	params.Set("query", query)
-	if t != "" {
-		params.Set("time", t)
+	if tTS != "" {
+		params.Set("time", tTS)
 	}
 
 	endpoint := c.BaseURL + "/api/datasources/proxy/uid/" + c.MetricsDatasourceUID + "/api/v1/query?" + params.Encode()
@@ -244,10 +264,17 @@ func (c *Client) ListLabelValues(label, match string) ([]string, error) {
 
 	var result struct {
 		Status string   `json:"status"`
+		Error  string   `json:"error"`
 		Data   []string `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decoding response: %w", err)
+	}
+	if result.Status != "success" {
+		if result.Error != "" {
+			return nil, fmt.Errorf("datasource error: %s", result.Error)
+		}
+		return nil, fmt.Errorf("unexpected status %q in response", result.Status)
 	}
 	return result.Data, nil
 }

@@ -64,6 +64,30 @@ func TestLoadConfig_MissingToken(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_MissingLogsUID(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "cfg.json")
+	if err := os.WriteFile(path, []byte(`{"url":"https://x.com","token":"t","metrics_datasource_uid":"m"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadConfig(path)
+	if err == nil {
+		t.Fatal("expected error for missing logs_datasource_uid")
+	}
+}
+
+func TestLoadConfig_MissingMetricsUID(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "cfg.json")
+	if err := os.WriteFile(path, []byte(`{"url":"https://x.com","token":"t","logs_datasource_uid":"l"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadConfig(path)
+	if err == nil {
+		t.Fatal("expected error for missing metrics_datasource_uid")
+	}
+}
+
 func TestLoadConfig_FileNotFound(t *testing.T) {
 	_, err := LoadConfig("/nonexistent/path.json")
 	if err == nil {

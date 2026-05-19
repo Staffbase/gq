@@ -63,6 +63,9 @@ func registerTools(s *server.MCPServer, q grafana.Querier) {
 				return mcp.NewToolResultError("invalid arguments: expected object"), nil
 			}
 			query, _ := args["query"].(string)
+			if query == "" {
+				return mcp.NewToolResultError("query is required"), nil
+			}
 			start, _ := args["start"].(string)
 			end, _ := args["end"].(string)
 			limit := 100
@@ -94,6 +97,9 @@ func registerTools(s *server.MCPServer, q grafana.Querier) {
 				return mcp.NewToolResultError("invalid arguments: expected object"), nil
 			}
 			query, _ := args["query"].(string)
+			if query == "" {
+				return mcp.NewToolResultError("query is required"), nil
+			}
 			start, _ := args["start"].(string)
 			end, _ := args["end"].(string)
 			step, _ := args["step"].(string)
@@ -129,6 +135,9 @@ func registerTools(s *server.MCPServer, q grafana.Querier) {
 				return mcp.NewToolResultError("invalid arguments: expected object"), nil
 			}
 			query, _ := args["query"].(string)
+			if query == "" {
+				return mcp.NewToolResultError("query is required"), nil
+			}
 			t, _ := args["time"].(string)
 			raw, err := q.QueryMetricsInstant(query, t)
 			if err != nil {
@@ -156,6 +165,9 @@ func registerTools(s *server.MCPServer, q grafana.Querier) {
 				return mcp.NewToolResultError("invalid arguments: expected object"), nil
 			}
 			label, _ := args["label"].(string)
+			if label == "" {
+				return mcp.NewToolResultError("label is required"), nil
+			}
 			match, _ := args["match"].(string)
 			values, err := q.ListLabelValues(label, match)
 			if err != nil {
