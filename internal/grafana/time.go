@@ -28,15 +28,16 @@ import (
 //   - "now"          → current Unix timestamp
 //   - "now-<n><u>"   → current time minus duration  (e.g. "now-1h", "now-30m")
 //   - "now+<n><u>"   → current time plus duration   (e.g. "now+5m")
+//   - "<n><u>"       → bare duration treated as "now minus n" (e.g. "1h", "30m")
 //   - ""             → returned unchanged (caller treats empty as "omit")
 //   - anything else  → returned unchanged (already a Unix timestamp or RFC3339)
 //
 // Duration units: s (seconds), m (minutes), h (hours), d (days), w (weeks).
 func resolveTime(s string) (string, error) {
-	if s == "" || s == "now" {
-		if s == "" {
-			return s, nil
-		}
+	if s == "" {
+		return s, nil
+	}
+	if s == "now" {
 		return strconv.FormatInt(time.Now().Unix(), 10), nil
 	}
 
@@ -54,6 +55,11 @@ func resolveTime(s string) (string, error) {
 			return "", fmt.Errorf("invalid relative time %q: %w", s, err)
 		}
 		return strconv.FormatInt(time.Now().Add(d).Unix(), 10), nil
+	}
+
+	// Bare duration like "1h" or "30m" — treat as "now minus duration".
+	if d, err := parsePromDuration(s); err == nil {
+		return strconv.FormatInt(time.Now().Add(-d).Unix(), 10), nil
 	}
 
 	return s, nil

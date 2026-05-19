@@ -53,8 +53,8 @@ func registerTools(s *server.MCPServer, q grafana.Querier) {
 			mcp.WithString("query", mcp.Required(),
 				mcp.Description("LogsQL query expression. Use field:value syntax for filtering, _time:Xm for time range."),
 			),
-			mcp.WithString("start", mcp.Description("Start time: RFC3339, relative (e.g. '1h', '30m'), or Unix timestamp.")),
-			mcp.WithString("end", mcp.Description("End time: RFC3339, relative, or Unix timestamp.")),
+			mcp.WithString("start", mcp.Description("Start time: RFC3339, Unix timestamp, or relative (e.g. '1h', 'now-30m').")),
+			mcp.WithString("end", mcp.Description("End time: RFC3339, Unix timestamp, or relative (e.g. 'now', 'now+5m').")),
 			mcp.WithNumber("limit", mcp.Description("Max log lines to return (default 100).")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -69,7 +69,10 @@ func registerTools(s *server.MCPServer, q grafana.Querier) {
 			start, _ := args["start"].(string)
 			end, _ := args["end"].(string)
 			limit := 100
-			if l, ok := args["limit"].(float64); ok && l > 0 {
+			if l, ok := args["limit"].(float64); ok {
+				if l <= 0 || l != float64(int(l)) || l > 10000 {
+					return mcp.NewToolResultError("limit must be a positive integer not exceeding 10000"), nil
+				}
 				limit = int(l)
 			}
 			out, err := q.QueryLogs(query, start, end, limit)

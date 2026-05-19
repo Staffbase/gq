@@ -47,7 +47,7 @@ func TestResolveTime_Subtraction(t *testing.T) {
 	cases := []struct {
 		input    string
 		approx   time.Duration // expected offset from now
-		tolerace time.Duration
+		tolerance time.Duration
 	}{
 		{"now-1h", time.Hour, 2 * time.Second},
 		{"now-30m", 30 * time.Minute, 2 * time.Second},
@@ -67,10 +67,24 @@ func TestResolveTime_Subtraction(t *testing.T) {
 				t.Fatalf("result %q is not a Unix timestamp: %v", got, err)
 			}
 			diff := time.Since(time.Unix(ts, 0)) - tc.approx
-			if diff < -tc.tolerace || diff > tc.tolerace {
+			if diff < -tc.tolerance || diff > tc.tolerance {
 				t.Errorf("resolveTime(%q) = %d, want ~%d (diff %v)", tc.input, ts, want.Unix(), diff)
 			}
 		})
+	}
+}
+
+func TestResolveTime_BareDuration(t *testing.T) {
+	// "1h" should behave identically to "now-1h"
+	before := time.Now().Add(-time.Hour - time.Second)
+	got, err := resolveTime("1h")
+	after := time.Now().Add(-time.Hour + time.Second)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	ts, _ := strconv.ParseInt(got, 10, 64)
+	if time.Unix(ts, 0).Before(before) || time.Unix(ts, 0).After(after) {
+		t.Errorf("resolveTime(\"1h\") = %d, want ~1h ago", ts)
 	}
 }
 

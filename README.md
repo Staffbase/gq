@@ -44,10 +44,12 @@ Alternatively, set environment variables directly:
 
 ```sh
 export GRAFANA_URL=https://your-grafana-instance.example.com
-export GRAFANA_SERVICE_ACCOUNT_TOKEN=glsa_...
+export GRAFANA_SERVICE_ACCOUNT_TOKEN=glsa_...   # or GRAFANA_COOKIE=grafana_session=...
 export GRAFANA_LOGS_DATASOURCE_UID=<your-logs-datasource-uid>
 export GRAFANA_METRICS_DATASOURCE_UID=<your-metrics-datasource-uid>
 ```
+
+Use `GRAFANA_COOKIE` instead of `GRAFANA_SERVICE_ACCOUNT_TOKEN` if you prefer session-cookie auth (e.g. from a browser session). `GRAFANA_SERVICE_ACCOUNT_TOKEN` takes precedence when both are set.
 
 ## CLI Usage
 

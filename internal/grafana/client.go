@@ -193,8 +193,12 @@ func (c *Client) QueryMetricsRange(query, start, end, step string) ([]byte, erro
 	}
 	params := url.Values{}
 	params.Set("query", query)
-	params.Set("start", startTS)
-	params.Set("end", endTS)
+	if startTS != "" {
+		params.Set("start", startTS)
+	}
+	if endTS != "" {
+		params.Set("end", endTS)
+	}
 	params.Set("step", step)
 
 	endpoint := c.BaseURL + "/api/datasources/proxy/uid/" + c.MetricsDatasourceUID + "/api/v1/query_range?" + params.Encode()

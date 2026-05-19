@@ -56,7 +56,7 @@ func buildQueryCmd() *cobra.Command {
 		RunE:  runQuery,
 	}
 	cmd.Flags().StringP("query", "q", "", "LogsQL query (required)")
-	cmd.Flags().String("start", "", "Start time (RFC3339, relative like '5m', or Unix timestamp)")
+	cmd.Flags().String("start", "", "Start time: RFC3339, Unix timestamp, or relative (e.g. '1h', 'now-30m')")
 	cmd.Flags().String("end", "", "End time")
 	cmd.Flags().Int("limit", 100, "Max number of log lines to return")
 	_ = cmd.MarkFlagRequired("query")
