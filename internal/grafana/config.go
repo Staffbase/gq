@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 )
 
 // Config represents a stored Grafana connection configuration.
@@ -65,7 +66,7 @@ func NewClientFromConfig(path string) (*Client, error) {
 		return nil, err
 	}
 	return &Client{
-		BaseURL:              cfg.URL,
+		BaseURL:              strings.TrimRight(cfg.URL, "/"),
 		Token:                cfg.Token,
 		LogsDatasourceUID:    cfg.LogsDatasourceUID,
 		MetricsDatasourceUID: cfg.MetricsDatasourceUID,

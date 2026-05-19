@@ -19,6 +19,7 @@ package grafana
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -152,18 +153,21 @@ func (c *Client) QueryLogs(query, start, end string, limit int) ([]byte, error) 
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, readBody(resp.Body))
 	}
 
-	// Read all NDJSON lines, validate each, return as newline-joined bytes.
+	// Read NDJSON response line by line, skipping blank lines.
 	var lines []string
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
-	for scanner.Scan() {
-		line := scanner.Text()
+	reader := bufio.NewReader(resp.Body)
+	for {
+		line, err := reader.ReadString('\n')
+		line = strings.TrimRight(line, "\r\n")
 		if line != "" {
 			lines = append(lines, line)
 		}
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("reading response: %w", err)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, fmt.Errorf("reading response: %w", err)
+		}
 	}
 	return []byte(strings.Join(lines, "\n")), nil
 }

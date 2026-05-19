@@ -3,11 +3,11 @@
 ---
 
 This CLA is for individuals to contribute to any of the projects owned or managed by Staffbase in which software is offered under a license approved by the Open Source Initiative (OSI) (www.opensource.org).
-For more about Staffbase’s CLA process, please see the CONTRIBUTING.MD file.
+For more about Staffbase’s CLA process, please see the CONTRIBUTING.md file.
 
 ---
 
-In order to clarify the intellectual property license granted with Contributions (defined below) from any person or entity, Staffbase GmbH ("**Staffbase**") must have a Contributor License Agreement ("**CLA**" or “**Agreement**”)) on file that has been signed or accepted by each Contributor, indicating agreement to the license terms below. **This license is for your protection as a Contributor as well as the protection of Staffbase; it does not change your rights to use your own Contributions for any other purpose.**
+In order to clarify the intellectual property license granted with Contributions (defined below) from any person or entity, Staffbase GmbH (“**Staffbase**”) must have a Contributor License Agreement (“**CLA**” or “**Agreement**”) on file that has been signed or accepted by each Contributor, indicating agreement to the license terms below. **This license is for your protection as a Contributor as well as the protection of Staffbase; it does not change your rights to use your own Contributions for any other purpose.**
 
 You accept and agree to the following terms and conditions for Your present and future Contributions submitted to Staffbase. 
 
