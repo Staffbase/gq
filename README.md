@@ -49,7 +49,7 @@ export GRAFANA_LOGS_DATASOURCE_UID=<your-logs-datasource-uid>
 export GRAFANA_METRICS_DATASOURCE_UID=<your-metrics-datasource-uid>
 ```
 
-Use `GRAFANA_COOKIE` instead of `GRAFANA_SERVICE_ACCOUNT_TOKEN` if you prefer session-cookie auth (e.g. from a browser session). `GRAFANA_SERVICE_ACCOUNT_TOKEN` takes precedence when both are set.
+Use `GRAFANA_COOKIE` instead of `GRAFANA_SERVICE_ACCOUNT_TOKEN` if you prefer session-cookie auth (e.g. from a browser session). When both are set, `GRAFANA_COOKIE` takes precedence.
 
 ## CLI Usage
 
