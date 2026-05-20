@@ -20,6 +20,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PERSONAL_ACCESS_TOKEN: ${{ secrets.OSS_CONTRIBUTOR_LICENSE_AGREEMENT }}
         with:
+          allowlist: dependabot[bot]
+          branch: signatures
           path-to-signatures: signatures/version1/cla.json
           path-to-document: https://github.com/Staffbase/gq/blob/main/CLA.md
-          branch: signatures
