@@ -21,9 +21,10 @@ import (
 )
 
 func TestVersionCmd_DefaultsForUnstampedBuild(t *testing.T) {
-	cmd := buildVersionCmd()
+	cmd := buildRootCmd()
 	var out bytes.Buffer
 	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"version"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -43,9 +44,10 @@ func TestVersionCmd_RendersStampedValues(t *testing.T) {
 	commit = "abcdef0"
 	date = "2026-05-20T12:00:00Z"
 
-	cmd := buildVersionCmd()
+	cmd := buildRootCmd()
 	var out bytes.Buffer
 	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"version"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

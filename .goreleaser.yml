@@ -4,7 +4,6 @@ project_name: gq
 
 before:
   hooks:
-    - go mod tidy
     - go vet ./...
 
 builds:
