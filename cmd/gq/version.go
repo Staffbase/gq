@@ -33,7 +33,7 @@ func buildVersionCmd() *cobra.Command {
 		Use:   "version",
 		Short: "Print gq version information",
 		Run: func(cmd *cobra.Command, _ []string) {
-			fmt.Fprintf(cmd.OutOrStdout(), "gq %s (commit %s, built %s)\n", version, commit, date)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "gq %s (commit %s, built %s)\n", version, commit, date)
 		},
 	}
 }
