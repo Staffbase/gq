@@ -45,6 +45,7 @@ func buildRootCmd() *cobra.Command {
 		buildMetricsCmd(),
 		buildInstantCmd(),
 		buildMCPCmd(),
+		buildVersionCmd(),
 	)
 	return root
 }
