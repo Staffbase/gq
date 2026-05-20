@@ -63,6 +63,9 @@ gq metrics -q "up{namespace=\"flink\"}" --start now-1h --step 60s
 
 # Instant metrics query (PromQL)
 gq instant -q "flink_jobmanager_job_numRestarts{namespace=\"flink\"}"
+
+# Print version, commit, and build date
+gq version
 ```
 
 ## MCP Server
