@@ -6,7 +6,7 @@
 
 ```sh
 # via mise (pre-built binary for your platform)
-mise use github:Staffbase/gq@latest
+mise use --global github:Staffbase/gq@latest
 
 # or with Go (builds from source)
 go install github.com/Staffbase/gq/cmd/gq@latest
