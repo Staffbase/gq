@@ -60,7 +60,7 @@ release:
     **Install:**
     ```sh
     # via mise (pre-built binary):
-    mise use github:Staffbase/gq@{{ .Tag }}
+    mise use -g github:Staffbase/gq@{{ .Tag }}
 
     # or download a tarball from the assets above and put `gq` on your PATH.
     ```
