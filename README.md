@@ -56,13 +56,16 @@ Use `GRAFANA_COOKIE` instead of `GRAFANA_SERVICE_ACCOUNT_TOKEN` if you prefer se
 ```sh
 # Query logs (LogsQL)
 gq query -q "severity:ERROR _time:1h"
-gq query -q "k8s.namespace.name:flink _time:15m" --limit 50
+gq query -q "k8s.namespace.name:my-service _time:15m" --limit 50
 
 # Range metrics query (PromQL)
-gq metrics -q "up{namespace=\"flink\"}" --start now-1h --step 60s
+gq metrics -q "up{namespace=\"my-service\"}" --start now-1h --step 60s
 
 # Instant metrics query (PromQL)
-gq instant -q "flink_jobmanager_job_numRestarts{namespace=\"flink\"}"
+gq instant -q "http_requests_total{namespace=\"my-service\"}"
+
+# Print version, commit, and build date
+gq version
 ```
 
 ## MCP Server
