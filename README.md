@@ -5,14 +5,14 @@
 ## Install
 
 ```sh
-brew install staffbase/tap/gq
-```
+# via mise (pre-built binary for your platform)
+mise use github:Staffbase/gq@latest
 
-Or with Go:
-
-```sh
+# or with Go (builds from source)
 go install github.com/Staffbase/gq/cmd/gq@latest
 ```
+
+You can also grab a pre-built tarball from the [releases page](https://github.com/Staffbase/gq/releases) and put `gq` on your `PATH`.
 
 ## Configuration
 
