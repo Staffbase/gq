@@ -54,6 +54,8 @@ changelog:
 release:
   draft: false
   prerelease: auto
+  mode: append
+  replace_existing_artifacts: true
   header: |
     ## gq {{ .Tag }}
   footer: |
