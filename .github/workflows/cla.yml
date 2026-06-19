@@ -20,7 +20,7 @@ jobs:
           github.event.comment.body == 'recheck' ||
           github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA' ||
           github.event_name == 'pull_request'
-        uses: iainmcgin/cla-github-action@3e58ace6af840f66fcd80f68c08d76559140df5e # v3.0.0
+        uses: iainmcgin/cla-github-action@0d27e5a16278d4adb6b0c4b92f08ad27b0a21dc8 # v3.2.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PERSONAL_ACCESS_TOKEN: ${{ secrets.OSS_CONTRIBUTOR_LICENSE_AGREEMENT }}
