@@ -25,7 +25,21 @@ import (
 
 // newQuerier is the factory used by all run* functions.
 // Overridden in tests to inject a fake grafana.Querier.
-var newQuerier func() (grafana.Querier, error) = func() (grafana.Querier, error) {
+var newQuerier func(instance string) (grafana.Querier, error) = func(instance string) (grafana.Querier, error) {
+	if instance != "" {
+		reg, _, err := grafana.LoadConfigFileFromEnv()
+		if err != nil {
+			return nil, fmt.Errorf("--instance requires GRAFANA_CONFIG pointing to a registry file: %w", err)
+		}
+		if reg == nil {
+			return nil, fmt.Errorf("--instance requires GRAFANA_CONFIG pointing to a registry file")
+		}
+		inst, err := reg.ResolvedInstance(instance)
+		if err != nil {
+			return nil, err
+		}
+		return grafana.NewClientFromInstance(inst), nil
+	}
 	return grafana.NewClientFromEnv()
 }
 
@@ -60,6 +74,7 @@ func buildQueryCmd() *cobra.Command {
 	cmd.Flags().String("start", "", "Start time: RFC3339, Unix timestamp, or relative (e.g. '1h', 'now-30m')")
 	cmd.Flags().String("end", "", "End time")
 	cmd.Flags().Int("limit", 100, "Max number of log lines to return")
+	cmd.Flags().String("instance", "", "Grafana instance name (registry mode)")
 	_ = cmd.MarkFlagRequired("query")
 	return cmd
 }
@@ -74,6 +89,7 @@ func buildMetricsCmd() *cobra.Command {
 	cmd.Flags().String("start", "now-1h", "Start time")
 	cmd.Flags().String("end", "now", "End time")
 	cmd.Flags().String("step", "60s", "Query resolution step (e.g. 60s, 5m, 1h)")
+	cmd.Flags().String("instance", "", "Grafana instance name (registry mode)")
 	_ = cmd.MarkFlagRequired("query")
 	return cmd
 }
@@ -86,12 +102,14 @@ func buildInstantCmd() *cobra.Command {
 	}
 	cmd.Flags().StringP("query", "q", "", "PromQL query (required)")
 	cmd.Flags().String("time", "", "Evaluation time (RFC3339 or Unix timestamp, defaults to now)")
+	cmd.Flags().String("instance", "", "Grafana instance name (registry mode)")
 	_ = cmd.MarkFlagRequired("query")
 	return cmd
 }
 
 func runQuery(cmd *cobra.Command, _ []string) error {
-	q, err := newQuerier()
+	instance, _ := cmd.Flags().GetString("instance")
+	q, err := newQuerier(instance)
 	if err != nil {
 		return err
 	}
@@ -108,7 +126,8 @@ func runQuery(cmd *cobra.Command, _ []string) error {
 }
 
 func runMetrics(cmd *cobra.Command, _ []string) error {
-	q, err := newQuerier()
+	instance, _ := cmd.Flags().GetString("instance")
+	q, err := newQuerier(instance)
 	if err != nil {
 		return err
 	}
@@ -125,7 +144,8 @@ func runMetrics(cmd *cobra.Command, _ []string) error {
 }
 
 func runInstant(cmd *cobra.Command, _ []string) error {
-	q, err := newQuerier()
+	instance, _ := cmd.Flags().GetString("instance")
+	q, err := newQuerier(instance)
 	if err != nil {
 		return err
 	}

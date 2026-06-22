@@ -21,6 +21,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Staffbase/gq/internal/grafana"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -28,7 +29,7 @@ import (
 func callTool(t *testing.T, q *fakeQuerier, toolName string, args map[string]any) *mcp.CallToolResult {
 	t.Helper()
 	s := server.NewMCPServer("test", "0.0.0")
-	registerTools(s, q)
+	registerTools(s, func(_ map[string]any) (grafana.Querier, error) { return q, nil })
 
 	tool := s.GetTool(toolName)
 	if tool == nil {
