@@ -18,6 +18,7 @@ package grafana
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,6 +26,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 )
@@ -51,6 +53,10 @@ type Client struct {
 	Cookie string
 	// Token is a Grafana service account or API token for Bearer auth.
 	Token string
+	// TokenCommand is an optional shell command run via sh -c on 401 to obtain
+	// a fresh token. Its stdout (trimmed) replaces Token and the request is
+	// retried once.
+	TokenCommand string
 	// LogsDatasourceUID is the Grafana datasource UID for VictoriaLogs.
 	LogsDatasourceUID string
 	// MetricsDatasourceUID is the Grafana datasource UID for VictoriaMetrics.
@@ -67,7 +73,8 @@ func (c *Client) httpClient() *http.Client {
 }
 
 // NewClientFromEnv constructs a Client using the following precedence:
-//  1. GRAFANA_CONFIG env var → load config file (all settings in the file)
+//  1. GRAFANA_CONFIG env var → load config file (auto-detects single/registry format)
+//     For registry format, returns an error directing users to use --instance.
 //  2. Individual env vars: GRAFANA_URL, GRAFANA_SERVICE_ACCOUNT_TOKEN or
 //     GRAFANA_COOKIE, GRAFANA_LOGS_DATASOURCE_UID, GRAFANA_METRICS_DATASOURCE_UID
 //
@@ -109,7 +116,41 @@ func NewClientFromEnv() (*Client, error) {
 }
 
 // do executes an HTTP request, injecting auth headers.
+// On 401, if TokenCommand is set it runs the command to get a fresh token and
+// retries the request exactly once.
 func (c *Client) do(method, endpoint string, body io.Reader, contentType string) (*http.Response, error) {
+	var bodyBytes []byte
+	if body != nil {
+		var err error
+		bodyBytes, err = io.ReadAll(body)
+		if err != nil {
+			return nil, fmt.Errorf("reading request body: %w", err)
+		}
+	}
+
+	resp, err := c.doOnce(method, endpoint, bytes.NewReader(bodyBytes), contentType)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode == http.StatusUnauthorized && c.TokenCommand != "" {
+		_ = resp.Body.Close()
+		newToken, err := c.runTokenCommand()
+		if err != nil {
+			return nil, fmt.Errorf("token refresh failed: %w", err)
+		}
+		c.Token = newToken
+		resp, err = c.doOnce(method, endpoint, bytes.NewReader(bodyBytes), contentType)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return resp, nil
+}
+
+// doOnce performs a single HTTP request with current auth headers.
+func (c *Client) doOnce(method, endpoint string, body io.Reader, contentType string) (*http.Response, error) {
 	req, err := http.NewRequest(method, endpoint, body)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
@@ -123,6 +164,24 @@ func (c *Client) do(method, endpoint string, body io.Reader, contentType string)
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}
 	return c.httpClient().Do(req)
+}
+
+// runTokenCommand executes TokenCommand via sh -c and returns trimmed stdout.
+func (c *Client) runTokenCommand() (string, error) {
+	cmd := exec.Command("sh", "-c", c.TokenCommand) //nolint:gosec // user-supplied config
+	out, err := cmd.Output()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return "", fmt.Errorf("token_command exited %d: %s", exitErr.ExitCode(), strings.TrimSpace(string(exitErr.Stderr)))
+		}
+		return "", err
+	}
+	token := strings.TrimSpace(string(out))
+	if token == "" {
+		return "", fmt.Errorf("token_command produced empty output")
+	}
+	return token, nil
 }
 
 // QueryLogs runs a LogsQL query against VictoriaLogs via the Grafana proxy.

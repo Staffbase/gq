@@ -70,7 +70,7 @@ var _ grafana.Querier = (*fakeQuerier)(nil)
 func withFakeQuerier(t *testing.T, q *fakeQuerier) {
 	t.Helper()
 	orig := newQuerier
-	newQuerier = func() (grafana.Querier, error) { return q, nil }
+	newQuerier = func(_ string) (grafana.Querier, error) { return q, nil }
 	t.Cleanup(func() { newQuerier = orig })
 }
 
