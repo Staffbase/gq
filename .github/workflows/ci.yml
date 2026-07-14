@@ -33,7 +33,30 @@ jobs:
         run: go build ./...
 
       - name: Test
-        run: go test -race -coverprofile=coverage.out ./...
+        run: go test -json -race -coverprofile=coverage.out ./... 2>&1 | tee /tmp/go-test-output.json
+
+      - name: Upload Go test report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: gotest-report
+          path: /tmp/go-test-output.json
+          retention-days: 1
+          if-no-files-found: warn
+
+  push-test-results:
+    name: Push Go test results to Test Monitoring
+    if: ${{ always() }}
+    needs: [test]
+    uses: Staffbase/test-monitoring-connector-gotest/.github/workflows/connector-go.yml@1a41e409815d3b16b686bf2545c709e8fb9a630c # retry + core default
+    with:
+      test-output-file: go-test-output.json
+      artifact-pattern: gotest-report
+      connector-version: 68071eb0bd4737d9e19cf2e3be24130a3ebd2bed # v2026.28.1
+      app-id: ${{ vars.STAFFBASE_ACTIONS_APP_ID }}
+    secrets:
+      service-secret: ${{ secrets.TEST_MONITORING_SERVICE_SECRET }}
+      app-private-key: ${{ secrets.STAFFBASE_ACTIONS_PRIVATE_KEY }}
 
   lint:
     name: Lint
