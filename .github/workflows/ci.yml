@@ -53,7 +53,7 @@ jobs:
       test-output-file: go-test-output.json
       artifact-pattern: gotest-report
       connector-version: 68071eb0bd4737d9e19cf2e3be24130a3ebd2bed # v2026.28.1
-      app-id: ${{ vars.STAFFBASE_ACTIONS_APP_ID }}
+      app-id: ${{ vars.STAFFBASE_ACTIONS_CLIENT_ID }}
     secrets:
       service-secret: ${{ secrets.TEST_MONITORING_SERVICE_SECRET }}
       app-private-key: ${{ secrets.STAFFBASE_ACTIONS_PRIVATE_KEY }}
