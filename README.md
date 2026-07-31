@@ -22,7 +22,9 @@ You can also grab a pre-built tarball from the [releases page](https://github.co
 export GRAFANA_CONFIG=~/.config/gq/prod.json
 ```
 
-Config file format (`~/.config/gq/prod.json`):
+The file describes either a single Grafana instance or several. `gq` tells them apart by the `instances` key.
+
+### One instance
 
 ```json
 {
@@ -36,11 +38,53 @@ Config file format (`~/.config/gq/prod.json`):
 | Field | Required | Description |
 |---|---|---|
 | `url` | yes | Grafana base URL |
-| `token` | yes | Grafana service account or API token |
+| `token` | yes, unless `token_command` is set | Grafana service account or API token |
+| `token_command` | no | Shell command that prints a fresh token — see [Refreshing expired tokens](#refreshing-expired-tokens) |
 | `logs_datasource_uid` | yes | UID of the VictoriaLogs datasource — find it in Grafana under Administration → Data Sources |
 | `metrics_datasource_uid` | yes | UID of the VictoriaMetrics datasource — find it in Grafana under Administration → Data Sources |
 
-Alternatively, set environment variables directly:
+### Several instances
+
+Give the file an `instances` map and one `gq` process — and one MCP server — serves them all. Each key is an instance name you pass to `--instance` on the CLI, or as the `instance` argument to every MCP tool.
+
+```json
+{
+  "token_command": "your-auth-helper --print-token --for {url}",
+  "instances": {
+    "prod": {
+      "url": "https://grafana.example.com",
+      "logs_datasource_uid": "prod-logs",
+      "metrics_datasource_uid": "prod-metrics"
+    },
+    "staging": {
+      "url": "https://grafana.staging.example.com",
+      "token": "glsa_...",
+      "logs_datasource_uid": "staging-logs",
+      "metrics_datasource_uid": "staging-metrics"
+    }
+  }
+}
+```
+
+Each instance takes the same fields as the single-instance form. A top-level `token_command` applies to every instance that does not set its own, with `{url}` replaced by that instance's URL — so one helper can mint tokens for all of them. `staging` above pins a static token instead and never runs the command.
+
+`gq` ships no instance list of its own: the names, URLs and datasource UIDs are entirely yours.
+
+### Refreshing expired tokens
+
+A long-running MCP server outlives most tokens. Rather than fail every call after the first expiry, set `token_command` to something that prints a fresh token on stdout:
+
+```json
+{ "token_command": "vault read -field=token secret/grafana" }
+```
+
+On a `401`, `gq` runs the command via `sh -c`, takes its trimmed stdout as the new token, and retries the request once. If the retry also fails, the error surfaces normally — the command runs once per failure, never in a loop. A non-zero exit or empty output is reported with the command's stderr, so a broken auth helper says so rather than looking like a Grafana outage.
+
+Concurrent calls that all hit an expired token refresh once between them, not once each.
+
+`token_command` is a config-file field. It does not apply to cookie auth, where the cookie is what was rejected and a new token could not help.
+
+### Environment variables instead of a file
 
 ```sh
 export GRAFANA_URL=https://your-grafana-instance.example.com
@@ -50,6 +94,8 @@ export GRAFANA_METRICS_DATASOURCE_UID=<your-metrics-datasource-uid>
 ```
 
 Use `GRAFANA_COOKIE` instead of `GRAFANA_SERVICE_ACCOUNT_TOKEN` if you prefer session-cookie auth (e.g. from a browser session). When both are set, `GRAFANA_COOKIE` takes precedence.
+
+`GRAFANA_CONFIG` wins over all of these. This path covers one instance and has no `token_command` equivalent; use a config file if you need either.
 
 ## CLI Usage
 
@@ -64,9 +110,15 @@ gq metrics -q "up{namespace=\"my-service\"}" --start now-1h --step 60s
 # Instant metrics query (PromQL)
 gq instant -q "http_requests_total{namespace=\"my-service\"}"
 
+# Pick an instance, when GRAFANA_CONFIG holds several
+gq query -q "severity:ERROR _time:1h" --instance prod
+gq metrics -q "up" --instance staging
+
 # Print version, commit, and build date
 gq version
 ```
+
+`--instance` is required when the config file defines several, and rejected when it does not. Naming one that does not exist lists the ones that do.
 
 ## MCP Server
 
@@ -79,18 +131,24 @@ gq version
 | `query_metrics_instant` | Run a PromQL instant query against VictoriaMetrics |
 | `list_label_values` | List distinct values for a metric label |
 
-### OpenCode configuration
+When `GRAFANA_CONFIG` points at a [multi-instance file](#several-instances), each tool takes one extra required argument, `instance`, and its description lists the names available. One server entry then covers every environment — worth doing, because each entry's tools occupy space in the agent's context whether or not they get called.
 
-Add one entry per Grafana environment to your `opencode.json`:
+### Claude Code
+
+```sh
+claude mcp add gq --env GRAFANA_CONFIG=/Users/you/.config/gq/grafana.json -- gq mcp
+```
+
+### OpenCode configuration
 
 ```json
 {
   "mcp": {
-    "gq-prod": {
+    "gq": {
       "type": "local",
       "command": ["gq", "mcp"],
       "environment": {
-        "GRAFANA_CONFIG": "/Users/you/.config/gq/prod.json"
+        "GRAFANA_CONFIG": "/Users/you/.config/gq/grafana.json"
       }
     }
   }
@@ -102,11 +160,11 @@ Add one entry per Grafana environment to your `opencode.json`:
 ```json
 {
   "mcpServers": {
-    "gq-prod": {
+    "gq": {
       "command": "gq",
       "args": ["mcp"],
       "env": {
-        "GRAFANA_CONFIG": "/Users/you/.config/gq/prod.json"
+        "GRAFANA_CONFIG": "/Users/you/.config/gq/grafana.json"
       }
     }
   }
