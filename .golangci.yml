@@ -1,0 +1,7 @@
+version: "2"
+
+# Without this, golangci-lint's defaults don't check formatting at all, and CI
+# stays green while files drift out of gofmt. Run `golangci-lint fmt` to fix.
+formatters:
+  enable:
+    - gofmt

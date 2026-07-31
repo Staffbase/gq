@@ -83,9 +83,9 @@ func parsePromDuration(s string) (time.Duration, error) {
 	case 'h':
 		return time.Duration(value * float64(time.Hour)), nil
 	case 'd':
-		return time.Duration(value * float64(24 * time.Hour)), nil
+		return time.Duration(value * float64(24*time.Hour)), nil
 	case 'w':
-		return time.Duration(value * float64(7 * 24 * time.Hour)), nil
+		return time.Duration(value * float64(7*24*time.Hour)), nil
 	default:
 		return 0, fmt.Errorf("unknown duration unit %q in %q (use s, m, h, d, w)", string(unit), s)
 	}
