@@ -2,47 +2,49 @@
 
 ## [0.1.0](https://github.com/Staffbase/gq/compare/v0.0.1...v0.1.0) (2026-07-31)
 
-One `gq` process can now serve several Grafana instances, and it keeps itself
-authenticated instead of dying when a token expires.
 
 ### Features
 
-- **Several instances from one config.** A config file containing an `instances`
-  map is read as a registry: each entry has its own URL, datasource UIDs and
-  credentials. Pick one with `--instance <name>` on the CLI. The format is
-  auto-detected, so an existing single-instance config keeps working untouched.
-- **One MCP server instead of one per environment.** In registry mode the MCP
-  server takes `instance` as a tool argument, so six environments cost four
-  tools in an agent's context rather than twenty-four. Clients are cached per
-  instance, so repeated calls reuse one connection and one token.
-- **Automatic token refresh.** Set `token_command` to any shell command that
-  prints a token. On HTTP 401 `gq` runs it, replaces the token and retries the
-  request once. `{url}` in the command is replaced with the instance's URL, so
-  one command at the top of a registry can serve every instance. A burst of
-  concurrent 401s refreshes once, not once per request. Nothing is retried
-  twice, and cookie auth is left alone.
+* multi-instance registry and automatic token refresh on 401 ([#23](https://github.com/Staffbase/gq/issues/23)) ([a142a18](https://github.com/Staffbase/gq/commit/a142a180bf4565154c203d4b8e76005d85f04330))
+* **release:** trigger from Releases UI (release:published) ([aeeeb2a](https://github.com/Staffbase/gq/commit/aeeeb2a478176825741b84d11be762fa6167fc2b))
+* **release:** trigger workflow from the Releases UI ([658815a](https://github.com/Staffbase/gq/commit/658815ad650a11f346123cc9b1d44eeeba202ba6))
+
 
 ### Bug Fixes
 
-- A `GRAFANA_CONFIG` that is set but unreadable now reports the offending file
-  and the parse error. It used to fall through to environment-variable mode and
-  complain that `GRAFANA_URL` was missing, which sent people looking in the
-  wrong place.
-- `{url}` is substituted for every `token_command`, not only for one inherited
-  from the registry level. A single-instance config or a per-instance override
-  used to pass `{url}` to the shell literally, so the refresh failed.
-- The MCP server reports its real version in the handshake instead of a
-  hard-coded `0.1.0`.
+* **release:** guard goreleaser job to v* tags only ([b1bb3e5](https://github.com/Staffbase/gq/commit/b1bb3e5dbcc0f30fc68632300cb1a1158003063b))
+* skip CLA job for Dependabot PRs, add explicit permissions ([402f35c](https://github.com/Staffbase/gq/commit/402f35c49379093eef6ef29c07bd4dce72c676f9))
+* swap CLA action to maintained fork ([7512a12](https://github.com/Staffbase/gq/commit/7512a12dea7386527116b640366c9a1cf9d0c124))
 
-### Upgrading
-
-Nothing breaks. Existing config files, `GRAFANA_*` environment variables and all
-four CLI commands behave exactly as before; everything above is opt-in.
 
 ### Chores
 
-Releases are now cut by release-please from conventional commits, `gofmt` is
-enforced in CI, and the usual run of dependency and GitHub Actions bumps.
+* bump release.yml actions to latest majors ([9097bb1](https://github.com/Staffbase/gq/commit/9097bb130dd4a94581ac7f0a709ae184c162483e))
+* **deps:** bump actions/checkout from 4 to 6 ([ba94051](https://github.com/Staffbase/gq/commit/ba94051b74504cecebe18418cbba5d30eb522e26))
+* **deps:** bump actions/checkout from 6.0.2 to 6.0.3 ([df4bf6f](https://github.com/Staffbase/gq/commit/df4bf6f0662e294ef2a5ffcf5523c1a5ffe5baab))
+* **deps:** bump actions/checkout from 6.0.3 to 7.0.0 ([253e73c](https://github.com/Staffbase/gq/commit/253e73ca5516032e0d40be196d4db7d6014c3760))
+* **deps:** bump actions/checkout from 7.0.0 to 7.0.1 ([0e13112](https://github.com/Staffbase/gq/commit/0e13112c410c14ee217a9435e72ee428b62edfeb))
+* **deps:** bump actions/setup-go from 5 to 6 ([6b8999b](https://github.com/Staffbase/gq/commit/6b8999ba2e534c0fa3d3906de37a035563e2c547))
+* **deps:** bump actions/setup-go from 6.4.0 to 6.5.0 ([e5cd8f2](https://github.com/Staffbase/gq/commit/e5cd8f26b2ff9bfb0e42923a9a9dcf721258f978))
+* **deps:** bump actions/setup-go from 6.5.0 to 7.0.0 ([4301652](https://github.com/Staffbase/gq/commit/4301652d43647b1bb3f146a7156dbf5262f956b1))
+* **deps:** bump github.com/mark3labs/mcp-go from 0.54.0 to 0.55.0 ([a2f3b3a](https://github.com/Staffbase/gq/commit/a2f3b3a4b380ee04484f03582249a527e5c0f694))
+* **deps:** bump github.com/mark3labs/mcp-go from 0.55.0 to 0.55.1 ([5664079](https://github.com/Staffbase/gq/commit/56640795d4ea7e77995dc44da649613a14c08c8c))
+* **deps:** bump github.com/mark3labs/mcp-go from 0.55.1 to 0.56.0 ([a9921b4](https://github.com/Staffbase/gq/commit/a9921b48a7a94766582c9d1d8342869d1e8f73fc))
+* **deps:** bump github.com/mark3labs/mcp-go from 0.56.0 to 0.57.0 ([cb1cfd0](https://github.com/Staffbase/gq/commit/cb1cfd002a171e71ceff3035493d56cb40ab2605))
+* **deps:** bump golangci/golangci-lint-action from 9.2.1 to 9.3.0 ([d1fa48b](https://github.com/Staffbase/gq/commit/d1fa48bd5ffeec483909d5b607295d3df6227fd0))
+* **deps:** bump goreleaser/goreleaser-action from 6 to 7 ([1db9cc1](https://github.com/Staffbase/gq/commit/1db9cc19e7bcff072c674a116316425e89d14b4e))
+* **deps:** bump goreleaser/goreleaser-action from 7.2.2 to 7.2.3 ([8063201](https://github.com/Staffbase/gq/commit/8063201fbfe15218801c4fe8514c5424e8e815f3))
+* **deps:** bump iainmcgin/cla-github-action from 3.0.0 to 3.2.0 ([202035f](https://github.com/Staffbase/gq/commit/202035f5b9b5df467e8638736a6ff83732a2af36))
+* enforce gofmt in CI ([#34](https://github.com/Staffbase/gq/issues/34)) ([90d56a9](https://github.com/Staffbase/gq/commit/90d56a92334f47612fa95f5f69d54cfd9ae1c4b9))
+* normalize `-g` to `--global` in goreleaser footer ([1ee4cbd](https://github.com/Staffbase/gq/commit/1ee4cbdc96865d1c86406856699a9f5507909e48))
+* pin GitHub Actions to commit SHAs; switch mise to github backend ([c1e8e3a](https://github.com/Staffbase/gq/commit/c1e8e3a6ce1127c94c6a0f4692348ba618e4a6b1))
+* pin GitHub Actions to SHAs; switch mise install snippet to github backend ([142b9f4](https://github.com/Staffbase/gq/commit/142b9f4c05b209a99347d5672b33c493eed1a83b))
+
+
+### CI
+
+* bump golangci-lint to v2.12.2; lint-action to v9.2.1 ([0e57a2e](https://github.com/Staffbase/gq/commit/0e57a2e561e6d0ed283963bb9ccbe45a213431fb))
+* release with release-please and require conventional commits ([#33](https://github.com/Staffbase/gq/issues/33)) ([ab41ddd](https://github.com/Staffbase/gq/commit/ab41ddd9933bdb82876f7c3ad90597241674becb))
 
 ## [0.0.1](https://github.com/Staffbase/gq/releases/tag/v0.0.1) (2026-05-21)
 
