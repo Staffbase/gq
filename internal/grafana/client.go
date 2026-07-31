@@ -18,6 +18,7 @@ package grafana
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,7 +26,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -50,7 +53,18 @@ type Client struct {
 	// Takes precedence over Token if both are set.
 	Cookie string
 	// Token is a Grafana service account or API token for Bearer auth.
+	//
+	// Set it at construction. Once the Client is in use, TokenCommand may
+	// replace it from another goroutine — read it through currentToken, which
+	// takes tokenMu, rather than touching the field directly.
 	Token string
+	// TokenCommand is an optional shell command run via sh -c on 401 to obtain
+	// a fresh token. Its stdout (trimmed) replaces Token and the request is
+	// retried once. Read-only after construction.
+	TokenCommand string
+	// tokenMu guards Token and serialises TokenCommand execution, so that a
+	// burst of concurrent 401s refreshes once instead of once per request.
+	tokenMu sync.Mutex
 	// LogsDatasourceUID is the Grafana datasource UID for VictoriaLogs.
 	LogsDatasourceUID string
 	// MetricsDatasourceUID is the Grafana datasource UID for VictoriaMetrics.
@@ -67,7 +81,8 @@ func (c *Client) httpClient() *http.Client {
 }
 
 // NewClientFromEnv constructs a Client using the following precedence:
-//  1. GRAFANA_CONFIG env var → load config file (all settings in the file)
+//  1. GRAFANA_CONFIG env var → load config file (auto-detects single/registry format)
+//     For registry format, returns an error directing users to use --instance.
 //  2. Individual env vars: GRAFANA_URL, GRAFANA_SERVICE_ACCOUNT_TOKEN or
 //     GRAFANA_COOKIE, GRAFANA_LOGS_DATASOURCE_UID, GRAFANA_METRICS_DATASOURCE_UID
 //
@@ -109,7 +124,73 @@ func NewClientFromEnv() (*Client, error) {
 }
 
 // do executes an HTTP request, injecting auth headers.
+// On 401, if TokenCommand is set it runs the command to get a fresh token and
+// retries the request exactly once.
+//
+// The body is buffered because the retry has to replay it.
 func (c *Client) do(method, endpoint string, body io.Reader, contentType string) (*http.Response, error) {
+	var bodyBytes []byte
+	if body != nil {
+		var err error
+		bodyBytes, err = io.ReadAll(body)
+		if err != nil {
+			return nil, fmt.Errorf("reading request body: %w", err)
+		}
+	}
+
+	// Snapshot the token: on 401 this is the value that was rejected, which is
+	// what tells refreshToken whether someone else has already replaced it.
+	token := c.currentToken()
+	resp, err := c.doOnce(method, endpoint, bytes.NewReader(bodyBytes), contentType, token)
+	if err != nil {
+		return nil, err
+	}
+
+	// Cookie auth wins over Token in doOnce, so refreshing the token could not
+	// change the outcome — don't run the command for a rejected cookie.
+	if resp.StatusCode != http.StatusUnauthorized || c.TokenCommand == "" || c.Cookie != "" {
+		return resp, nil
+	}
+
+	_ = resp.Body.Close()
+	fresh, err := c.refreshToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("token refresh failed: %w", err)
+	}
+	return c.doOnce(method, endpoint, bytes.NewReader(bodyBytes), contentType, fresh)
+}
+
+// currentToken returns the token in effect right now.
+func (c *Client) currentToken() string {
+	c.tokenMu.Lock()
+	defer c.tokenMu.Unlock()
+	return c.Token
+}
+
+// refreshToken runs TokenCommand and stores the result, returning the new token.
+//
+// stale is the token the server just rejected. If another goroutine has already
+// replaced it, that newer token is returned without running the command again —
+// so N concurrent 401s cost one refresh, not N.
+func (c *Client) refreshToken(stale string) (string, error) {
+	c.tokenMu.Lock()
+	defer c.tokenMu.Unlock()
+	if c.Token != stale {
+		return c.Token, nil
+	}
+	token, err := c.runTokenCommand()
+	if err != nil {
+		return "", err
+	}
+	c.Token = token
+	return token, nil
+}
+
+// doOnce performs a single HTTP request, authenticating with the given token.
+//
+// The token is passed in rather than read from the Client so that a request and
+// its retry each use one consistent value.
+func (c *Client) doOnce(method, endpoint string, body io.Reader, contentType, token string) (*http.Response, error) {
 	req, err := http.NewRequest(method, endpoint, body)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
@@ -119,10 +200,34 @@ func (c *Client) do(method, endpoint string, body io.Reader, contentType string)
 	}
 	if c.Cookie != "" {
 		req.Header.Set("Cookie", c.Cookie)
-	} else if c.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.Token)
+	} else if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	return c.httpClient().Do(req)
+}
+
+// runTokenCommand executes TokenCommand via sh -c and returns trimmed stdout.
+// Callers must hold tokenMu.
+//
+// {url} is substituted here rather than at config load, so it works the same
+// whether the command came from a single-instance config, a per-instance
+// override, or a registry-level default — one rule to document, one to test.
+func (c *Client) runTokenCommand() (string, error) {
+	command := strings.ReplaceAll(c.TokenCommand, "{url}", c.BaseURL)
+	cmd := exec.Command("sh", "-c", command) //nolint:gosec // user-supplied config
+	out, err := cmd.Output()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return "", fmt.Errorf("token_command exited %d: %s", exitErr.ExitCode(), strings.TrimSpace(string(exitErr.Stderr)))
+		}
+		return "", err
+	}
+	token := strings.TrimSpace(string(out))
+	if token == "" {
+		return "", fmt.Errorf("token_command produced empty output")
+	}
+	return token, nil
 }
 
 // QueryLogs runs a LogsQL query against VictoriaLogs via the Grafana proxy.
