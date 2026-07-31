@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.0](https://github.com/Staffbase/gq/compare/v0.0.1...v0.1.0) (2026-07-31)
+
+
+### Features
+
+* **multi-instance config.** A config file with an `instances` map describes several Grafana instances at once, each with its own URL, credentials and datasource UIDs. Pick one with `--instance <name>`. The format is auto-detected, so existing single-instance configs and `GRAFANA_*` environment variables keep working unchanged ([#23](https://github.com/Staffbase/gq/pull/23)) ([a142a18](https://github.com/Staffbase/gq/commit/a142a180bf4565154c203d4b8e76005d85f04330))
+* **automatic token refresh.** Set `token_command` to any shell command that prints a token. On a 401 `gq` runs it, replaces the token and retries the request once, so a session that outlives its token no longer fails. `{url}` in the command is replaced with the instance URL, so one command at the top of the config can serve every instance ([#23](https://github.com/Staffbase/gq/pull/23)) ([a142a18](https://github.com/Staffbase/gq/commit/a142a180bf4565154c203d4b8e76005d85f04330))
+* **one MCP server for all instances.** In multi-instance mode `gq mcp` takes `instance` as a tool argument instead of needing a server process per environment — four tools in an agent's context rather than four per instance. Connections and tokens are reused per instance across calls ([#23](https://github.com/Staffbase/gq/pull/23)) ([a142a18](https://github.com/Staffbase/gq/commit/a142a180bf4565154c203d4b8e76005d85f04330))
+
+
+### Bug Fixes
+
+* a `GRAFANA_CONFIG` that is set but unreadable or malformed now reports the file and the parse error, instead of silently falling back to environment variables and complaining that `GRAFANA_URL` is missing ([#23](https://github.com/Staffbase/gq/pull/23)) ([a142a18](https://github.com/Staffbase/gq/commit/a142a180bf4565154c203d4b8e76005d85f04330))
+* `gq mcp` reports the real binary version in its MCP handshake instead of a hard-coded one ([#23](https://github.com/Staffbase/gq/pull/23)) ([a142a18](https://github.com/Staffbase/gq/commit/a142a180bf4565154c203d4b8e76005d85f04330))
+
 ## [0.0.1](https://github.com/Staffbase/gq/releases/tag/v0.0.1) (2026-05-21)
 
 First release. `gq` queries logs and metrics through Grafana's datasource proxy,
