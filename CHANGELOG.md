@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.0](https://github.com/Staffbase/gq/compare/v0.1.0...v0.2.0) (2026-07-31)
+
+
+### Features
+
+* **release:** bump the Homebrew formula on release ([#40](https://github.com/Staffbase/gq/issues/40)) ([f58a335](https://github.com/Staffbase/gq/commit/f58a33522ce747ad1e2523956bd2b16b2ee8ca72))
+
+
+### Bug Fixes
+
+* **release:** refuse to bump the tap on an unusable version ([#41](https://github.com/Staffbase/gq/issues/41)) ([fff971d](https://github.com/Staffbase/gq/commit/fff971df796e4fd487bed2a11efa20ae06ea009e))
+* **release:** stop the CLA lock from killing releases, add a recovery path ([#36](https://github.com/Staffbase/gq/issues/36)) ([3a7ef1a](https://github.com/Staffbase/gq/commit/3a7ef1a5444f17efcef8a123af96cba0b327d3ad))
+
 ## [0.1.0](https://github.com/Staffbase/gq/compare/v0.0.1...v0.1.0) (2026-07-31)
 
 
