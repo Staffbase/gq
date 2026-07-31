@@ -45,8 +45,8 @@ func TestResolveTime_Now(t *testing.T) {
 
 func TestResolveTime_Subtraction(t *testing.T) {
 	cases := []struct {
-		input    string
-		approx   time.Duration // expected offset from now
+		input     string
+		approx    time.Duration // expected offset from now
 		tolerance time.Duration
 	}{
 		{"now-1h", time.Hour, 2 * time.Second},
