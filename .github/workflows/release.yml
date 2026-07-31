@@ -110,6 +110,17 @@ jobs:
             echo "staffbase-actions tap token unavailable — skipping Homebrew formula bump."
             exit 0
           fi
+          # `version` is set dynamically by release-please-action, not declared in
+          # its action.yml, so a rename on a future bump would surface here as an
+          # empty string rather than a build error. Empty sails straight through
+          # the rewrite below and publishes a formula pinned to version "" with
+          # /download/v/ URLs — broken for everyone, and only noticed on the next
+          # brew install. Refuse to guess.
+          if ! printf '%s' "${VERSION:-}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+'; then
+            echo "release-please gave no usable version (got '${VERSION:-}') — refusing to touch the tap." >&2
+            exit 1
+          fi
+
           repo="Staffbase/homebrew-homebrew"
           path="Formula/gq.rb"
 
