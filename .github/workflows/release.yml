@@ -30,6 +30,8 @@ jobs:
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
+      # Unprefixed (0.1.0, not v0.1.0) — that is what the formula's version field wants.
+      version: ${{ steps.release.outputs.version }}
     steps:
       # App token, not GITHUB_TOKEN: a PR authored by github-actions[bot] has its
       # checks held at "workflows awaiting approval", so every release would need
@@ -88,3 +90,95 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # owner + repositories are required: without them the token only covers this repo.
+      - name: Obtain App Token for the Homebrew tap
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: tap_token
+        with:
+          client-id: ${{ vars.STAFFBASE_ACTIONS_CLIENT_ID }}
+          private-key: ${{ secrets.STAFFBASE_ACTIONS_PRIVATE_KEY }}
+          owner: Staffbase
+          repositories: homebrew-homebrew
+
+      # Rewrites version, the four URLs and the four sha256s in the tap formula,
+      # in place. Not goreleaser's `brews:` block, which regenerates the formula
+      # wholesale and would drop the hand-written gq-grafana-mcp wrapper it ships.
+      - name: Bump Homebrew formula
+        env:
+          GH_TOKEN: ${{ steps.tap_token.outputs.token }}
+          VERSION: ${{ needs.release-please.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "staffbase-actions tap token unavailable — skipping Homebrew formula bump."
+            exit 0
+          fi
+          repo="Staffbase/homebrew-homebrew"
+          path="Formula/gq.rb"
+
+          # Also probes existence: skip rather than fail if the formula is gone.
+          if ! blob_sha="$(gh api "repos/$repo/contents/$path" --jq .sha 2>/dev/null)"; then
+            echo "$path not found on $repo — skipping bump."
+            exit 0
+          fi
+          gh api "repos/$repo/contents/$path" -H "Accept: application/vnd.github.raw" > formula.rb
+          cp formula.rb formula.orig.rb
+
+          python3 - "$VERSION" "$PWD/dist/checksums.txt" "$PWD/formula.rb" <<'PY'
+          import re, sys, pathlib
+          version, sums_path, formula_path = sys.argv[1], sys.argv[2], sys.argv[3]
+
+          sums = {}
+          for line in open(sums_path):
+              parts = line.split()
+              if len(parts) == 2:
+                  sums[parts[1].rsplit("/", 1)[-1]] = parts[0]  # basename -> sha256
+
+          expected = {
+              "gq_Darwin_arm64.tar.gz",
+              "gq_Darwin_x86_64.tar.gz",
+              "gq_Linux_arm64.tar.gz",
+              "gq_Linux_x86_64.tar.gz",
+          }
+          missing = expected - set(sums)
+          if missing:
+              sys.exit(f"checksums.txt is missing checksums for: {sorted(missing)}")
+
+          text = pathlib.Path(formula_path).read_text()
+          # Function (not string) replacements: a value with backslashes or group-refs is
+          # never interpreted by re.sub's replacement mini-language.
+          text = re.sub(r'version "[^"]+"', lambda _m: f'version "{version}"', text, count=1)
+          text = re.sub(r"/download/v[0-9][^/]*/", lambda _m: f"/download/v{version}/", text)
+
+          # The asset basename in each url selects the checksum for the sha256 line
+          # below it, so reordering the platform blocks stays correct.
+          out, current, applied = [], None, set()
+          for line in text.splitlines(keepends=True):
+              m = re.search(r'/(gq_[A-Za-z0-9_]+\.tar\.gz)"', line)
+              if "url " in line and m:
+                  current = m.group(1)
+              if 'sha256 "' in line and current and current in sums:
+                  sha = sums[current]
+                  line = re.sub(r'sha256 "[0-9a-f]+"', lambda _m: f'sha256 "{sha}"', line)
+                  applied.add(current)
+                  current = None
+              out.append(line)
+
+          if applied != expected:
+              sys.exit(f"Updated sha256 for {sorted(applied)}, expected {sorted(expected)} "
+                       "— formula and checksums.txt disagree.")
+
+          pathlib.Path(formula_path).write_text("".join(out))
+          PY
+
+          if cmp -s formula.rb formula.orig.rb; then
+            echo "Formula already at ${VERSION} — nothing to bump."
+            exit 0
+          fi
+          gh api --method PUT "repos/$repo/contents/$path" \
+            -f message="gq: bump to ${VERSION}" \
+            -f branch="main" \
+            -f sha="$blob_sha" \
+            -f content="$(base64 -w0 < formula.rb)"
+          echo "Bumped ${repo} formula to ${VERSION}."
