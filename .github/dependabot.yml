@@ -8,6 +8,12 @@ updates:
     labels:
       - dependencies
       - go
+    # Explicit, rather than letting Dependabot infer the convention from history:
+    # its PR titles have to pass the conventional-commits check like anyone
+    # else's, and they become the commit subjects release-please reads.
+    commit-message:
+      prefix: "chore"
+      include: "scope"
 
   - package-ecosystem: github-actions
     directory: "/"
@@ -16,3 +22,6 @@ updates:
     labels:
       - dependencies
       - github-actions
+    commit-message:
+      prefix: "chore"
+      include: "scope"

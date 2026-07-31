@@ -1,20 +1,57 @@
 name: Release
 
+# changelog-sections in release-please-config.json must match commitlint.config.mjs
+# exactly, nothing hidden — a type CI accepts but release-please ignores cuts no
+# release and publishes no binaries, silently.
+
 on:
-  release:
-    types: [published]
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      # App token, not GITHUB_TOKEN: a PR authored by github-actions[bot] has its
+      # checks held at "workflows awaiting approval", so every release would need
+      # someone to click Approve before CI starts.
+      - name: Obtain App Token for the release PR
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: release_token
+        with:
+          client-id: ${{ vars.STAFFBASE_ACTIONS_CLIENT_ID }}
+          private-key: ${{ secrets.STAFFBASE_ACTIONS_PRIVATE_KEY }}
+
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        with:
+          token: ${{ steps.release_token.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
   goreleaser:
     name: GoReleaser
-    if: startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-latest
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    permissions:
+      contents: write
     steps:
+      # Check out the tag release-please just pushed, not the branch head:
+      # goreleaser derives the version from the tag on HEAD. fetch-depth 0 brings
+      # the tags along, without which it would build a dirty snapshot version.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
           fetch-depth: 0
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -22,6 +59,12 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # Catches a main that went red between merge and release.
+      - run: go test ./...
+
+      # release-please has already created the GitHub release with its notes;
+      # `mode: append` in .goreleaser.yml adds the binaries to it rather than
+      # replacing what release-please wrote.
       - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           distribution: goreleaser
