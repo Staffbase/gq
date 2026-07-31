@@ -61,6 +61,26 @@ func (ts *tokenServer) headers() []string {
 	return append([]string(nil), ts.seen...)
 }
 
+// The command is documented as accepting {url}. Substitution happens when the
+// command runs, not when config is loaded, so a single-instance config gets it
+// too — this is a plain Client with no registry behind it.
+func TestTokenCommand_SubstitutesURL(t *testing.T) {
+	srv := newTokenServer(t, "fresh-token")
+	c := &Client{
+		BaseURL: srv.URL,
+		Token:   "expired-token",
+		// Echoes the substituted URL back as the token, so the server only
+		// accepts the request if {url} really was replaced.
+		TokenCommand:         `test "{url}" = "` + srv.URL + `" && echo fresh-token`,
+		LogsDatasourceUID:    "victorialogs",
+		MetricsDatasourceUID: "victoriametrics",
+	}
+
+	if _, err := c.QueryMetricsInstant("up", ""); err != nil {
+		t.Fatalf("expected {url} to be substituted with the instance URL, got: %v", err)
+	}
+}
+
 func TestTokenCommand_RefreshesOn401AndRetries(t *testing.T) {
 	srv := newTokenServer(t, "fresh-token")
 	c := &Client{
@@ -202,9 +222,12 @@ func TestTokenCommand_ConcurrentRefreshRunsCommandOnce(t *testing.T) {
 	// The command appends a byte per run, so the count survives the subshell.
 	counter := filepath.Join(t.TempDir(), "runs")
 	c := &Client{
-		BaseURL:              srv.URL,
-		Token:                "expired-token",
-		TokenCommand:         fmt.Sprintf("printf x >> %s; echo fresh-token", counter),
+		BaseURL: srv.URL,
+		Token:   "expired-token",
+		// Quoted: t.TempDir() derives the path from the test name, so an
+		// unquoted %s breaks the redirect the day someone renames this test to
+		// something with a space in it.
+		TokenCommand:         fmt.Sprintf("printf x >> '%s'; echo fresh-token", counter),
 		LogsDatasourceUID:    "victorialogs",
 		MetricsDatasourceUID: "victoriametrics",
 	}

@@ -109,7 +109,9 @@ func TestRegistry_UnknownInstanceListsTheKnownOnes(t *testing.T) {
 	}
 }
 
-func TestRegistry_TokenCommandDefaultsAndSubstitutesURL(t *testing.T) {
+// {url} stays a placeholder here on purpose — Client expands it when it runs
+// the command. See TestTokenCommand_SubstitutesURL.
+func TestRegistry_TokenCommandDefaultsToTheRegistryLevelOne(t *testing.T) {
 	body := `{
 	  "token_command": "mint --for {url}",
 	  "instances": {
@@ -127,8 +129,8 @@ func TestRegistry_TokenCommandDefaultsAndSubstitutesURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if prod.TokenCommand != "mint --for https://prod.example.com" {
-		t.Errorf("expected {url} substituted into the inherited command, got %q", prod.TokenCommand)
+	if prod.TokenCommand != "mint --for {url}" {
+		t.Errorf("expected the registry-level command inherited verbatim, got %q", prod.TokenCommand)
 	}
 
 	dev, err := reg.ResolvedInstance("dev")

@@ -41,8 +41,10 @@ type Config struct {
 // InstanceConfig holds per-instance settings in a registry file.
 // Token is optional when TokenCommand is set (at the registry or instance level).
 type InstanceConfig struct {
-	URL                  string `json:"url"`
-	Token                string `json:"token,omitempty"`
+	URL   string `json:"url"`
+	Token string `json:"token,omitempty"`
+	// TokenCommand overrides the registry-level default for this instance.
+	// {url} is substituted with this instance's URL before execution.
 	TokenCommand         string `json:"token_command,omitempty"`
 	LogsDatasourceUID    string `json:"logs_datasource_uid"`
 	MetricsDatasourceUID string `json:"metrics_datasource_uid"`
@@ -63,13 +65,16 @@ type Registry struct {
 // ResolvedInstance returns a fully resolved InstanceConfig for the given name,
 // applying the registry-level token_command as default if the instance doesn't
 // have its own.
+//
+// {url} is left alone here; Client substitutes it when it runs the command, so
+// every source of a token_command gets the same treatment.
 func (r *Registry) ResolvedInstance(name string) (InstanceConfig, error) {
 	inst, ok := r.Instances[name]
 	if !ok {
 		return InstanceConfig{}, fmt.Errorf("instance %q not found in registry (available: %s)", name, strings.Join(r.InstanceNames(), ", "))
 	}
 	if inst.TokenCommand == "" && r.TokenCommand != "" {
-		inst.TokenCommand = strings.ReplaceAll(r.TokenCommand, "{url}", inst.URL)
+		inst.TokenCommand = r.TokenCommand
 	}
 	return inst, nil
 }

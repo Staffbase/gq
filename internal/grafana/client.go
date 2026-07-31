@@ -208,8 +208,13 @@ func (c *Client) doOnce(method, endpoint string, body io.Reader, contentType, to
 
 // runTokenCommand executes TokenCommand via sh -c and returns trimmed stdout.
 // Callers must hold tokenMu.
+//
+// {url} is substituted here rather than at config load, so it works the same
+// whether the command came from a single-instance config, a per-instance
+// override, or a registry-level default — one rule to document, one to test.
 func (c *Client) runTokenCommand() (string, error) {
-	cmd := exec.Command("sh", "-c", c.TokenCommand) //nolint:gosec // user-supplied config
+	command := strings.ReplaceAll(c.TokenCommand, "{url}", c.BaseURL)
+	cmd := exec.Command("sh", "-c", command) //nolint:gosec // user-supplied config
 	out, err := cmd.Output()
 	if err != nil {
 		var exitErr *exec.ExitError
