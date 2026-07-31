@@ -25,6 +25,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PERSONAL_ACCESS_TOKEN: ${{ secrets.OSS_CONTRIBUTOR_LICENSE_AGREEMENT }}
         with:
+          # The action locks the conversation on merge by default, and it wins
+          # the race against release-please, which comments on the release PR it
+          # just merged. That comment failing takes the whole release job down
+          # after it has already pushed the tag. v0.1.0 shipped with no notes and
+          # no binaries because of it.
+          lock-pullrequest-aftermerge: false
           allowlist: noreply@anthropic.com,noreply@opencode.ai,copilot@noreply.github.com,*[bot]
           branch: signatures
           path-to-signatures: signatures/version1/cla.json

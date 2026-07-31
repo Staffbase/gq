@@ -4,10 +4,20 @@ name: Release
 # exactly, nothing hidden — a type CI accepts but release-please ignores cuts no
 # release and publishes no binaries, silently.
 
+# Do not edit the release PR body above its version heading. release-please reads
+# the body back to build the GitHub release notes, and expects the `## [x.y.z]`
+# heading to be the first thing after the `---`. Anything above it and the notes
+# come out empty. Put a summary under the heading instead.
+
 on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      publish_tag:
+        description: "Recovery only: build and attach binaries to this existing tag (e.g. v0.1.0). Leave empty for a normal run."
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -42,7 +52,13 @@ jobs:
     name: GoReleaser
     runs-on: ubuntu-latest
     needs: release-please
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    # !cancelled() rather than success(): release-please pushes the tag and cuts
+    # the release before its last few steps, so a late failure there used to mean
+    # a tagged release with no binaries attached to it. If there is a tag, build.
+    if: >
+      ${{ !cancelled() &&
+          (needs.release-please.outputs.release_created == 'true' ||
+           inputs.publish_tag != '') }}
     permissions:
       contents: write
     steps:
@@ -51,7 +67,7 @@ jobs:
       # the tags along, without which it would build a dirty snapshot version.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: ${{ inputs.publish_tag || needs.release-please.outputs.tag_name }}
           fetch-depth: 0
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
