@@ -1,8 +1,11 @@
 name: Release
 
-# changelog-sections in release-please-config.json must match commitlint.config.mjs
-# exactly, nothing hidden — a type CI accepts but release-please ignores cuts no
-# release and publishes no binaries, silently.
+# Every type commitlint.config.mjs accepts must also appear in changelog-sections
+# in release-please-config.json, so nothing that passes CI gets dropped on the
+# floor at changelog time. Marking a section hidden is safe: it only controls what
+# gets rendered. release-please derives the version bump from the commit types
+# themselves and never reads changelog-sections, so a hidden type still cuts a
+# release.
 
 # Do not edit the release PR body above its version heading. release-please reads
 # the body back to build the GitHub release notes, and expects the `## [x.y.z]`
