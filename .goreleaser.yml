@@ -42,22 +42,20 @@ checksum:
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
 
+# release-please owns the release notes: it writes CHANGELOG.md and creates the
+# GitHub release before goreleaser runs. Leaving this on would append a second,
+# differently-filtered copy of the same commits underneath them.
 changelog:
-  sort: asc
-  filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
-      - "^chore:"
-      - "^ci:"
+  disable: true
 
 release:
   draft: false
   prerelease: auto
+  # The release already exists (release-please created it) — append the archives
+  # and checksums to it instead of failing or overwriting the notes.
   mode: append
   replace_existing_artifacts: true
-  header: |
-    ## gq {{ .Tag }}
+  # No header: release-please's notes already open with the version heading.
   footer: |
     **Install:**
     ```sh
