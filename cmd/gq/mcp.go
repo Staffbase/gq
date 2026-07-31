@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 
@@ -41,20 +42,17 @@ func buildMCPCmd() *cobra.Command {
 type clientFunc func(args map[string]any) (grafana.Querier, error)
 
 func runMCP(_ *cobra.Command, _ []string) error {
-	s := server.NewMCPServer("gq", "0.1.0", server.WithToolCapabilities(false))
+	s := server.NewMCPServer("gq", version, server.WithToolCapabilities(false))
 
-	reg, _, err := grafana.LoadConfigFileFromEnv()
-	if err == nil && reg != nil {
+	reg, err := registryFromEnv()
+	if err != nil {
+		return err
+	}
+
+	if reg != nil {
 		// Registry mode: instance param required on every tool.
 		cache := newClientCache(reg)
-		registerTools(s,
-			func(args map[string]any) (grafana.Querier, error) {
-				inst, _ := args["instance"].(string)
-				if inst == "" {
-					return nil, fmt.Errorf("instance is required")
-				}
-				return cache.get(inst)
-			},
+		registerTools(s, cache.querierFor,
 			mcp.WithString("instance", mcp.Required(),
 				mcp.Description("Grafana instance name. Available: "+strings.Join(reg.InstanceNames(), ", ")),
 			),
@@ -62,7 +60,7 @@ func runMCP(_ *cobra.Command, _ []string) error {
 		return server.ServeStdio(s)
 	}
 
-	// Single-instance mode: fall back to env vars / single-instance config.
+	// Single-instance mode: env vars or a single-instance config file.
 	client, err := grafana.NewClientFromEnv()
 	if err != nil {
 		return err
@@ -71,6 +69,23 @@ func runMCP(_ *cobra.Command, _ []string) error {
 		func(_ map[string]any) (grafana.Querier, error) { return client, nil },
 	)
 	return server.ServeStdio(s)
+}
+
+// registryFromEnv returns the registry GRAFANA_CONFIG points at, or nil when
+// GRAFANA_CONFIG is unset or holds a single-instance config.
+//
+// A GRAFANA_CONFIG that is set but unreadable is an error, not a fall-through to
+// single-instance mode: reporting "GRAFANA_URL is required" for what is really a
+// malformed config file sends people looking in the wrong place.
+func registryFromEnv() (*grafana.Registry, error) {
+	if os.Getenv("GRAFANA_CONFIG") == "" {
+		return nil, nil
+	}
+	reg, _, err := grafana.LoadConfigFileFromEnv()
+	if err != nil {
+		return nil, err
+	}
+	return reg, nil
 }
 
 // clientCache caches per-instance clients within a session so refreshed tokens
@@ -85,7 +100,13 @@ func newClientCache(reg *grafana.Registry) *clientCache {
 	return &clientCache{reg: reg, clients: make(map[string]*grafana.Client)}
 }
 
-func (cc *clientCache) get(instance string) (grafana.Querier, error) {
+// querierFor resolves the "instance" tool argument to a cached client.
+func (cc *clientCache) querierFor(args map[string]any) (grafana.Querier, error) {
+	instance, _ := args["instance"].(string)
+	if instance == "" {
+		return nil, fmt.Errorf("instance is required (available: %s)", strings.Join(cc.reg.InstanceNames(), ", "))
+	}
+
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
 	if c, ok := cc.clients[instance]; ok {
