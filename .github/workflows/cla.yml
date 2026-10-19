@@ -31,7 +31,7 @@ jobs:
           # after it has already pushed the tag. v0.1.0 shipped with no notes and
           # no binaries because of it.
           lock-pullrequest-aftermerge: false
-          allowlist: noreply@anthropic.com,noreply@opencode.ai,copilot@noreply.github.com,*[bot]
+          allowlist: noreply@anthropic.com,noreply@opencode.ai,copilot@noreply.github.com,Copilot,*[bot]
           branch: signatures
           path-to-signatures: signatures/version1/cla.json
           path-to-document: https://github.com/Staffbase/gq/blob/main/CLA.md
