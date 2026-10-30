@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/Staffbase/gq/compare/v0.2.0...v0.2.1) (2026-10-30)
+
+
+### Bug Fixes
+
+* allow Copilot in CLA allowlist ([#49](https://github.com/Staffbase/gq/issues/49)) ([8aa298f](https://github.com/Staffbase/gq/commit/8aa298ffc7de80e3dea866216a906c15afc4b250))
+
 ## [0.2.0](https://github.com/Staffbase/gq/compare/v0.1.0...v0.2.0) (2026-07-31)
 
 
