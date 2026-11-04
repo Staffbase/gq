@@ -18,8 +18,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"sort"
 	"strconv"
 )
@@ -30,35 +28,81 @@ const DefaultProfilesDatasourceUID = "pyroscope"
 
 const pyroscopeQuerier = "querier.v1.QuerierService/"
 
-// ProfileTypes lists the profile types Pyroscope holds (cpu, memory, ...).
-// Returns the raw JSON response.
-func (c *Client) ProfileTypes() ([]byte, error) {
-	return c.postProfiles("ProfileTypes", map[string]any{})
+// maxFlamegraphNodes asks Pyroscope for as little pruning as it will allow;
+// the server clamps it to its own limit.
+const maxFlamegraphNodes = 200000
+
+// ProfileType is one kind of profile Pyroscope holds, e.g. CPU or memory.
+// Its ID is what query_profile takes as profile_type.
+type ProfileType struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	SampleType string `json:"sampleType"`
+	SampleUnit string `json:"sampleUnit"`
+}
+
+// ProfileTypes lists the profile types Pyroscope holds.
+func (c *Client) ProfileTypes() ([]ProfileType, error) {
+	raw, err := c.postProfiles("ProfileTypes", map[string]any{})
+	if err != nil {
+		return nil, err
+	}
+	var r struct {
+		ProfileTypes []struct {
+			ID         string `json:"ID"`
+			Name       string `json:"name"`
+			SampleType string `json:"sampleType"`
+			SampleUnit string `json:"sampleUnit"`
+		} `json:"profileTypes"`
+	}
+	if err := json.Unmarshal(raw, &r); err != nil {
+		return nil, fmt.Errorf("decoding profile types: %w", err)
+	}
+	types := make([]ProfileType, 0, len(r.ProfileTypes))
+	for _, t := range r.ProfileTypes {
+		types = append(types, ProfileType(t))
+	}
+	return types, nil
 }
 
 // ProfileLabelValues lists values of a profile label, e.g. service_name.
-// Returns the raw JSON response.
-func (c *Client) ProfileLabelValues(label, start, end string) ([]byte, error) {
+func (c *Client) ProfileLabelValues(label, start, end string) ([]string, error) {
 	body, err := withRange(map[string]any{"name": label}, start, end)
 	if err != nil {
 		return nil, err
 	}
-	return c.postProfiles("LabelValues", body)
+	raw, err := c.postProfiles("LabelValues", body)
+	if err != nil {
+		return nil, err
+	}
+	var r struct {
+		Names []string `json:"names"`
+	}
+	if err := json.Unmarshal(raw, &r); err != nil {
+		return nil, fmt.Errorf("decoding label values: %w", err)
+	}
+	if r.Names == nil {
+		r.Names = []string{}
+	}
+	return r.Names, nil
 }
 
-// SelectProfile merges all profiles matching selector into one flamegraph.
-// selector is label-matcher syntax, e.g. `{service_name="backend"}`.
-// Returns the raw JSON response.
-func (c *Client) SelectProfile(profileTypeID, selector, start, end string, maxNodes int) ([]byte, error) {
+// SelectProfile merges all profiles matching selector (label-matcher syntax,
+// e.g. `{service_name="backend"}`) and returns the top functions by self cost.
+func (c *Client) SelectProfile(profileTypeID, selector, start, end string, top int) (*ProfileSummary, error) {
 	body, err := withRange(map[string]any{
 		"profileTypeID": profileTypeID,
 		"labelSelector": selector,
-		"maxNodes":      maxNodes,
+		"maxNodes":      maxFlamegraphNodes,
 	}, start, end)
 	if err != nil {
 		return nil, err
 	}
-	return c.postProfiles("SelectMergeStacktraces", body)
+	raw, err := c.postProfiles("SelectMergeStacktraces", body)
+	if err != nil {
+		return nil, err
+	}
+	return summarizeProfile(raw, top)
 }
 
 // withRange adds Pyroscope's start/end (Unix milliseconds) to body.
@@ -83,16 +127,7 @@ func (c *Client) postProfiles(method string, body map[string]any) ([]byte, error
 		uid = DefaultProfilesDatasourceUID
 	}
 	payload, _ := json.Marshal(body)
-	endpoint := c.BaseURL + "/api/datasources/proxy/uid/" + uid + "/" + pyroscopeQuerier + method
-	resp, err := c.do("POST", endpoint, bytes.NewReader(payload), "application/json")
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, readBody(resp.Body))
-	}
-	return io.ReadAll(resp.Body)
+	return c.proxy(uid, "POST", pyroscopeQuerier+method, bytes.NewReader(payload), "application/json")
 }
 
 // ProfileSummary is the LLM-friendly view of a merged profile.
@@ -108,9 +143,9 @@ type ProfileFunc struct {
 	SelfPct float64 `json:"selfPercent"`
 }
 
-// SummarizeProfile reduces a SelectMergeStacktraces flamegraph to its top
+// summarizeProfile reduces a SelectMergeStacktraces flamegraph to its top
 // functions by self cost. A raw flamegraph is far too large to hand to an LLM.
-func SummarizeProfile(raw []byte, top int) (*ProfileSummary, error) {
+func summarizeProfile(raw []byte, top int) (*ProfileSummary, error) {
 	var r struct {
 		Flamegraph struct {
 			Names  []string    `json:"names"`

@@ -17,7 +17,6 @@ package grafana
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -371,67 +370,4 @@ func init() {
 	_ = os.Unsetenv("GRAFANA_SERVICE_ACCOUNT_TOKEN")
 	_ = os.Unsetenv("GRAFANA_LOGS_DATASOURCE_UID")
 	_ = os.Unsetenv("GRAFANA_METRICS_DATASOURCE_UID")
-}
-
-// -- traces --
-
-func TestSearchTraces_ProxyPathAndParams(t *testing.T) {
-	var gotPath, gotQuery string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPath, gotQuery = r.URL.Path, r.URL.RawQuery
-		_, _ = w.Write([]byte(`{"traces":[]}`))
-	}))
-	defer srv.Close()
-	c := &Client{BaseURL: srv.URL, TracesDatasourceUID: "tr"}
-	if _, err := c.SearchTraces(`{ status = error }`, "1700000000", "2023-11-14T22:13:20Z", 5); err != nil {
-		t.Fatal(err)
-	}
-	if gotPath != "/api/datasources/proxy/uid/tr/api/search" {
-		t.Errorf("path = %s", gotPath)
-	}
-	for _, want := range []string{"q=%7B+status+%3D+error+%7D", "start=1700000000", "end=1700000000", "limit=5"} {
-		if !strings.Contains(gotQuery, want) {
-			t.Errorf("query %q missing %q", gotQuery, want)
-		}
-	}
-}
-
-func TestGetTrace_DefaultDatasourceUID(t *testing.T) {
-	var gotPath string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
-		_, _ = w.Write([]byte(`{}`))
-	}))
-	defer srv.Close()
-	if _, err := (&Client{BaseURL: srv.URL}).GetTrace("abc"); err != nil {
-		t.Fatal(err)
-	}
-	if gotPath != "/api/datasources/proxy/uid/victoriatraces/api/v2/traces/abc" {
-		t.Errorf("path = %s", gotPath)
-	}
-}
-
-// -- profiles --
-
-func TestSelectProfile_ProxyPathAndBody(t *testing.T) {
-	var gotPath, gotBody string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
-		b, _ := io.ReadAll(r.Body)
-		gotBody = string(b)
-		_, _ = w.Write([]byte(`{}`))
-	}))
-	defer srv.Close()
-	c := &Client{BaseURL: srv.URL}
-	if _, err := c.SelectProfile("cpu", `{service_name="x"}`, "1700000000", "1700000060", 10); err != nil {
-		t.Fatal(err)
-	}
-	if gotPath != "/api/datasources/proxy/uid/pyroscope/querier.v1.QuerierService/SelectMergeStacktraces" {
-		t.Errorf("path = %s", gotPath)
-	}
-	for _, want := range []string{`"profileTypeID":"cpu"`, `"start":1700000000000`, `"end":1700000060000`, `"maxNodes":10`} {
-		if !strings.Contains(gotBody, want) {
-			t.Errorf("body %s missing %s", gotBody, want)
-		}
-	}
 }

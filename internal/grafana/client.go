@@ -17,7 +17,6 @@
 package grafana
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -44,11 +43,11 @@ type Querier interface {
 	QueryMetricsRange(query, start, end, step string) ([]byte, error)
 	QueryMetricsInstant(query, t string) ([]byte, error)
 	ListLabelValues(label, match string) ([]string, error)
-	SearchTraces(query, start, end string, limit int) ([]byte, error)
-	GetTrace(traceID string) ([]byte, error)
-	ProfileTypes() ([]byte, error)
-	ProfileLabelValues(label, start, end string) ([]byte, error)
-	SelectProfile(profileTypeID, selector, start, end string, maxNodes int) ([]byte, error)
+	SearchTraces(query, start, end string, limit int) ([]TraceHit, error)
+	GetTrace(traceID string) (*TraceSummary, error)
+	ProfileTypes() ([]ProfileType, error)
+	ProfileLabelValues(label, start, end string) ([]string, error)
+	SelectProfile(profileTypeID, selector, start, end string, top int) (*ProfileSummary, error)
 }
 
 // Client holds connection config for the Grafana proxy.
@@ -244,6 +243,24 @@ func (c *Client) runTokenCommand() (string, error) {
 	return token, nil
 }
 
+// proxy calls path on the datasource uid through Grafana's datasource proxy and
+// returns the body of a 200 response.
+func (c *Client) proxy(uid, method, path string, body io.Reader, contentType string) ([]byte, error) {
+	resp, err := c.do(method, c.BaseURL+"/api/datasources/proxy/uid/"+uid+"/"+path, body, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, readBody(resp.Body))
+	}
+	out, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading response: %w", err)
+	}
+	return out, nil
+}
+
 // QueryLogs runs a LogsQL query against VictoriaLogs via the Grafana proxy.
 // Returns raw NDJSON bytes.
 func (c *Client) QueryLogs(query, start, end string, limit int) ([]byte, error) {
@@ -267,33 +284,17 @@ func (c *Client) QueryLogs(query, start, end string, limit int) ([]byte, error) 
 		form.Set("limit", fmt.Sprintf("%d", limit))
 	}
 
-	endpoint := c.BaseURL + "/api/datasources/proxy/uid/" + c.LogsDatasourceUID + "/select/logsql/query"
-	resp, err := c.do("POST", endpoint, strings.NewReader(form.Encode()), "application/x-www-form-urlencoded")
+	raw, err := c.proxy(c.LogsDatasourceUID, "POST", "select/logsql/query",
+		strings.NewReader(form.Encode()), "application/x-www-form-urlencoded")
 	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, readBody(resp.Body))
+		return nil, err
 	}
 
-	// Read NDJSON response line by line, skipping blank lines.
+	// NDJSON: drop blank lines.
 	var lines []string
-	reader := bufio.NewReader(resp.Body)
-	for {
-		line, err := reader.ReadString('\n')
-		line = strings.TrimRight(line, "\r\n")
-		if line != "" {
+	for _, line := range strings.Split(string(raw), "\n") {
+		if line = strings.TrimRight(line, "\r"); line != "" {
 			lines = append(lines, line)
-		}
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			return nil, fmt.Errorf("reading response: %w", err)
 		}
 	}
 	return []byte(strings.Join(lines, "\n")), nil
@@ -319,20 +320,7 @@ func (c *Client) QueryMetricsRange(query, start, end, step string) ([]byte, erro
 		params.Set("end", endTS)
 	}
 	params.Set("step", step)
-
-	endpoint := c.BaseURL + "/api/datasources/proxy/uid/" + c.MetricsDatasourceUID + "/api/v1/query_range?" + params.Encode()
-	resp, err := c.do("GET", endpoint, nil, "")
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, readBody(resp.Body))
-	}
-	return io.ReadAll(resp.Body)
+	return c.proxy(c.MetricsDatasourceUID, "GET", "api/v1/query_range?"+params.Encode(), nil, "")
 }
 
 // QueryMetricsInstant runs a PromQL instant query against VictoriaMetrics.
@@ -347,20 +335,7 @@ func (c *Client) QueryMetricsInstant(query, t string) ([]byte, error) {
 	if tTS != "" {
 		params.Set("time", tTS)
 	}
-
-	endpoint := c.BaseURL + "/api/datasources/proxy/uid/" + c.MetricsDatasourceUID + "/api/v1/query?" + params.Encode()
-	resp, err := c.do("GET", endpoint, nil, "")
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, readBody(resp.Body))
-	}
-	return io.ReadAll(resp.Body)
+	return c.proxy(c.MetricsDatasourceUID, "GET", "api/v1/query?"+params.Encode(), nil, "")
 }
 
 // ListLabelValues returns distinct values for a given metric label.
@@ -370,19 +345,10 @@ func (c *Client) ListLabelValues(label, match string) ([]string, error) {
 	if match != "" {
 		params.Set("match[]", match)
 	}
-
-	endpoint := c.BaseURL + "/api/datasources/proxy/uid/" + c.MetricsDatasourceUID + "/api/v1/label/" +
-		url.PathEscape(label) + "/values?" + params.Encode()
-	resp, err := c.do("GET", endpoint, nil, "")
+	raw, err := c.proxy(c.MetricsDatasourceUID, "GET",
+		"api/v1/label/"+url.PathEscape(label)+"/values?"+params.Encode(), nil, "")
 	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, readBody(resp.Body))
+		return nil, err
 	}
 
 	var result struct {
@@ -390,7 +356,7 @@ func (c *Client) ListLabelValues(label, match string) ([]string, error) {
 		Error  string   `json:"error"`
 		Data   []string `json:"data"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(raw, &result); err != nil {
 		return nil, fmt.Errorf("decoding response: %w", err)
 	}
 	if result.Status != "success" {

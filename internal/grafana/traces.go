@@ -19,8 +19,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
@@ -36,8 +34,7 @@ const DefaultTracesDatasourceUID = "victoriatraces"
 // the proxy path continues with the plain Tempo API.
 
 // SearchTraces runs a TraceQL search, e.g. `{ resource.service.name = "web" && status = error }`.
-// Returns the raw Tempo JSON response.
-func (c *Client) SearchTraces(query, start, end string, limit int) ([]byte, error) {
+func (c *Client) SearchTraces(query, start, end string, limit int) ([]TraceHit, error) {
 	params := url.Values{}
 	params.Set("q", query)
 	for k, v := range map[string]string{"start": start, "end": end} {
@@ -52,12 +49,20 @@ func (c *Client) SearchTraces(query, start, end string, limit int) ([]byte, erro
 	if limit > 0 {
 		params.Set("limit", strconv.Itoa(limit))
 	}
-	return c.getTraces("api/search?" + params.Encode())
+	raw, err := c.getTraces("api/search?" + params.Encode())
+	if err != nil {
+		return nil, err
+	}
+	return summarizeSearch(raw)
 }
 
-// GetTrace fetches one trace by ID. Returns the raw Tempo v2 JSON (OTLP) response.
-func (c *Client) GetTrace(traceID string) ([]byte, error) {
-	return c.getTraces("api/v2/traces/" + url.PathEscape(traceID))
+// GetTrace fetches one trace by ID and summarises it.
+func (c *Client) GetTrace(traceID string) (*TraceSummary, error) {
+	raw, err := c.getTraces("api/v2/traces/" + url.PathEscape(traceID))
+	if err != nil {
+		return nil, err
+	}
+	return summarizeTrace(raw)
 }
 
 func (c *Client) getTraces(path string) ([]byte, error) {
@@ -65,16 +70,7 @@ func (c *Client) getTraces(path string) ([]byte, error) {
 	if uid == "" {
 		uid = DefaultTracesDatasourceUID
 	}
-	endpoint := c.BaseURL + "/api/datasources/proxy/uid/" + uid + "/" + path
-	resp, err := c.do("GET", endpoint, nil, "")
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, readBody(resp.Body))
-	}
-	return io.ReadAll(resp.Body)
+	return c.proxy(uid, "GET", path, nil, "")
 }
 
 // resolveSeconds is resolveTime that also accepts RFC3339; Tempo wants Unix seconds.
@@ -102,8 +98,8 @@ type TraceHit struct {
 	DurationMs    float64 `json:"durationMs"`
 }
 
-// SummarizeSearch trims a Tempo search response to TraceHit values.
-func SummarizeSearch(raw []byte) ([]TraceHit, error) {
+// summarizeSearch trims a Tempo search response to TraceHit values.
+func summarizeSearch(raw []byte) ([]TraceHit, error) {
 	var r struct {
 		Traces []struct {
 			TraceID           string      `json:"traceID"`
@@ -118,9 +114,13 @@ func SummarizeSearch(raw []byte) ([]TraceHit, error) {
 	}
 	out := make([]TraceHit, 0, len(r.Traces))
 	for _, t := range r.Traces {
+		start, err := nanoToRFC3339(string(t.StartTimeUnixNano))
+		if err != nil {
+			return nil, fmt.Errorf("trace %s: %w", t.TraceID, err)
+		}
 		out = append(out, TraceHit{
 			TraceID: t.TraceID, RootService: t.RootServiceName, RootOperation: t.RootTraceName,
-			StartTime: nanoToRFC3339(string(t.StartTimeUnixNano)), DurationMs: t.DurationMs,
+			StartTime: start, DurationMs: t.DurationMs,
 		})
 	}
 	return out, nil
@@ -188,8 +188,8 @@ type otlpTrace struct {
 	} `json:"trace"`
 }
 
-// SummarizeTrace turns a Tempo v2 (OTLP JSON) trace response into a TraceSummary.
-func SummarizeTrace(raw []byte) (*TraceSummary, error) {
+// summarizeTrace turns a Tempo v2 (OTLP JSON) trace response into a TraceSummary.
+func summarizeTrace(raw []byte) (*TraceSummary, error) {
 	var r otlpTrace
 	if err := json.Unmarshal(raw, &r); err != nil {
 		return nil, fmt.Errorf("decoding trace response: %w", err)
@@ -211,8 +211,14 @@ func SummarizeTrace(raw []byte) (*TraceSummary, error) {
 		}
 		for _, ss := range rs.ScopeSpans {
 			for _, s := range ss.Spans {
-				st, _ := strconv.ParseInt(string(s.StartTimeUnixNano), 10, 64)
-				en, _ := strconv.ParseInt(string(s.EndTimeUnixNano), 10, 64)
+				st, err := strconv.ParseInt(string(s.StartTimeUnixNano), 10, 64)
+				if err != nil {
+					return nil, fmt.Errorf("span %q: invalid start time %q", s.Name, s.StartTimeUnixNano)
+				}
+				en, err := strconv.ParseInt(string(s.EndTimeUnixNano), 10, 64)
+				if err != nil {
+					return nil, fmt.Errorf("span %q: invalid end time %q", s.Name, s.EndTimeUnixNano)
+				}
 				id := idToHex(s.SpanID)
 				traceID = idToHex(s.TraceID)
 				svcOf[id] = svc
@@ -272,8 +278,13 @@ func SummarizeTrace(raw []byte) (*TraceSummary, error) {
 	return sum, nil
 }
 
-// idToHex converts the base64 IDs OTLP JSON uses to hex; already-hex IDs pass through.
+// idToHex converts the base64 IDs OTLP JSON uses to hex. An ID that is already
+// 16 or 32 hex characters is returned as it is: such a string is also valid
+// base64, so decoding it would silently produce a different ID.
 func idToHex(id string) string {
+	if (len(id) == 16 || len(id) == 32) && isHex(id) {
+		return id
+	}
 	b, err := base64.StdEncoding.DecodeString(id)
 	if err != nil || len(b) == 0 {
 		return id
@@ -292,10 +303,15 @@ func isErrorStatus(code any) bool {
 	return false
 }
 
-func nanoToRFC3339(ns string) string {
+func isHex(s string) bool {
+	_, err := hex.DecodeString(s)
+	return err == nil
+}
+
+func nanoToRFC3339(ns string) (string, error) {
 	n, err := strconv.ParseInt(ns, 10, 64)
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("invalid timestamp %q", ns)
 	}
-	return time.Unix(0, n).UTC().Format(time.RFC3339Nano)
+	return time.Unix(0, n).UTC().Format(time.RFC3339Nano), nil
 }

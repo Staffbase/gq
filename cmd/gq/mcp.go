@@ -314,11 +314,7 @@ func registerTools(s *server.MCPServer, getClient clientFunc, extraParams ...mcp
 				}
 				limit = int(l)
 			}
-			raw, err := q.SearchTraces(query, start, end, limit)
-			if err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
-			}
-			hits, err := grafana.SummarizeSearch(raw)
+			hits, err := q.SearchTraces(query, start, end, limit)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
@@ -347,11 +343,7 @@ func registerTools(s *server.MCPServer, getClient clientFunc, extraParams ...mcp
 			if id == "" {
 				return mcp.NewToolResultError("trace_id is required"), nil
 			}
-			raw, err := q.GetTrace(id)
-			if err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
-			}
-			sum, err := grafana.SummarizeTrace(raw)
+			sum, err := q.GetTrace(id)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
@@ -374,11 +366,12 @@ func registerTools(s *server.MCPServer, getClient clientFunc, extraParams ...mcp
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
-			raw, err := q.ProfileTypes()
+			types, err := q.ProfileTypes()
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
-			return mcp.NewToolResultText(prettyJSON(raw)), nil
+			out, _ := json.MarshalIndent(types, "", "  ")
+			return mcp.NewToolResultText(string(out)), nil
 		},
 	)
 
@@ -404,11 +397,12 @@ func registerTools(s *server.MCPServer, getClient clientFunc, extraParams ...mcp
 				label = "service_name"
 			}
 			start, end := timeRange(args)
-			raw, err := q.ProfileLabelValues(label, start, end)
+			values, err := q.ProfileLabelValues(label, start, end)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
-			return mcp.NewToolResultText(prettyJSON(raw)), nil
+			out, _ := json.MarshalIndent(values, "", "  ")
+			return mcp.NewToolResultText(string(out)), nil
 		},
 	)
 
@@ -448,11 +442,7 @@ func registerTools(s *server.MCPServer, getClient clientFunc, extraParams ...mcp
 				limit = int(l)
 			}
 			start, end := timeRange(args)
-			raw, err := q.SelectProfile(ptype, selector, start, end, 200000)
-			if err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
-			}
-			sum, err := grafana.SummarizeProfile(raw, limit)
+			sum, err := q.SelectProfile(ptype, selector, start, end, limit)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
