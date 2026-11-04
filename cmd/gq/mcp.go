@@ -121,7 +121,7 @@ func (cc *clientCache) querierFor(args map[string]any) (grafana.Querier, error) 
 	return c, nil
 }
 
-// registerTools registers all four gq tools on s.
+// registerTools registers all gq tools on s.
 // getClient is called per-request to resolve the Querier.
 // extraParams are prepended to every tool's parameter list (e.g. "instance").
 func registerTools(s *server.MCPServer, getClient clientFunc, extraParams ...mcp.ToolOption) {
@@ -271,6 +271,91 @@ func registerTools(s *server.MCPServer, getClient clientFunc, extraParams ...mcp
 				return mcp.NewToolResultError(err.Error()), nil
 			}
 			out, _ := json.MarshalIndent(values, "", "  ")
+			return mcp.NewToolResultText(string(out)), nil
+		},
+	)
+
+	s.AddTool(
+		mcp.NewTool("query_traces",
+			append(extraParams,
+				mcp.WithDescription(
+					"Search traces in VictoriaTraces using TraceQL via Grafana proxy. Returns one headline per trace: "+
+						"trace ID, root service/operation, start time, duration. Use query_trace_by_id for the spans and service map. "+
+						"Example: '{ resource.service.name = \"frontend\" && status = error }'",
+				),
+				mcp.WithString("query", mcp.Required(), mcp.Description("TraceQL query expression.")),
+				mcp.WithString("start", mcp.Description("Start time: RFC3339, Unix timestamp, or relative (default: now-1h).")),
+				mcp.WithString("end", mcp.Description("End time (default: now).")),
+				mcp.WithNumber("limit", mcp.Description("Max traces to return (default 20).")),
+			)...,
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			args := toolArgs(req)
+			q, err := getClient(args)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			query, _ := args["query"].(string)
+			if query == "" {
+				return mcp.NewToolResultError("query is required"), nil
+			}
+			start, _ := args["start"].(string)
+			end, _ := args["end"].(string)
+			if start == "" {
+				start = "now-1h"
+			}
+			if end == "" {
+				end = "now"
+			}
+			limit := 20
+			if l, ok := args["limit"].(float64); ok {
+				if l <= 0 || l != float64(int(l)) || l > 1000 {
+					return mcp.NewToolResultError("limit must be a positive integer not exceeding 1000"), nil
+				}
+				limit = int(l)
+			}
+			raw, err := q.SearchTraces(query, start, end, limit)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			hits, err := grafana.SummarizeSearch(raw)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			out, _ := json.MarshalIndent(hits, "", "  ")
+			return mcp.NewToolResultText(string(out)), nil
+		},
+	)
+
+	s.AddTool(
+		mcp.NewTool("query_trace_by_id",
+			append(extraParams,
+				mcp.WithDescription(
+					"Fetch one trace from VictoriaTraces by trace ID. Returns the summary (root span, duration, "+
+						"error count, service map of caller→callee) plus every span with parent, service, operation, offset and duration.",
+				),
+				mcp.WithString("trace_id", mcp.Required(), mcp.Description("Trace ID (hex).")),
+			)...,
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			args := toolArgs(req)
+			q, err := getClient(args)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			id, _ := args["trace_id"].(string)
+			if id == "" {
+				return mcp.NewToolResultError("trace_id is required"), nil
+			}
+			raw, err := q.GetTrace(id)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			sum, err := grafana.SummarizeTrace(raw)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			out, _ := json.MarshalIndent(sum, "", "  ")
 			return mcp.NewToolResultText(string(out)), nil
 		},
 	)

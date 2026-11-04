@@ -30,6 +30,8 @@ type fakeQuerier struct {
 	instantErr    error
 	labelValues   []string
 	labelErr      error
+	tracesResult  []byte
+	tracesErr     error
 
 	capturedQuery string
 	capturedStart string
@@ -63,6 +65,16 @@ func (f *fakeQuerier) QueryMetricsInstant(query, t string) ([]byte, error) {
 
 func (f *fakeQuerier) ListLabelValues(label, match string) ([]string, error) {
 	return f.labelValues, f.labelErr
+}
+
+func (f *fakeQuerier) SearchTraces(query, start, end string, limit int) ([]byte, error) {
+	f.capturedQuery = query
+	return f.tracesResult, f.tracesErr
+}
+
+func (f *fakeQuerier) GetTrace(traceID string) ([]byte, error) {
+	f.capturedQuery = traceID
+	return f.tracesResult, f.tracesErr
 }
 
 var _ grafana.Querier = (*fakeQuerier)(nil)

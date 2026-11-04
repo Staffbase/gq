@@ -44,6 +44,8 @@ type Querier interface {
 	QueryMetricsRange(query, start, end, step string) ([]byte, error)
 	QueryMetricsInstant(query, t string) ([]byte, error)
 	ListLabelValues(label, match string) ([]string, error)
+	SearchTraces(query, start, end string, limit int) ([]byte, error)
+	GetTrace(traceID string) ([]byte, error)
 }
 
 // Client holds connection config for the Grafana proxy.
@@ -69,6 +71,9 @@ type Client struct {
 	LogsDatasourceUID string
 	// MetricsDatasourceUID is the Grafana datasource UID for VictoriaMetrics.
 	MetricsDatasourceUID string
+	// TracesDatasourceUID is the Grafana datasource UID for VictoriaTraces.
+	// Optional: DefaultTracesDatasourceUID is used when empty.
+	TracesDatasourceUID string
 	// HTTPClient is optional; when nil a client with defaultHTTPTimeout is used.
 	HTTPClient *http.Client
 }
@@ -84,9 +89,10 @@ func (c *Client) httpClient() *http.Client {
 //  1. GRAFANA_CONFIG env var → load config file (auto-detects single/registry format)
 //     For registry format, returns an error directing users to use --instance.
 //  2. Individual env vars: GRAFANA_URL, GRAFANA_SERVICE_ACCOUNT_TOKEN or
-//     GRAFANA_COOKIE, GRAFANA_LOGS_DATASOURCE_UID, GRAFANA_METRICS_DATASOURCE_UID
+//     GRAFANA_COOKIE, GRAFANA_LOGS_DATASOURCE_UID, GRAFANA_METRICS_DATASOURCE_UID,
+//     and optionally GRAFANA_TRACES_DATASOURCE_UID
 //
-// All fields are required. Find datasource UIDs in Grafana under
+// All fields except the traces UID are required. Find datasource UIDs in Grafana under
 // Administration → Data Sources → <datasource> → UID.
 //
 // Returns an error if any required field is missing.
@@ -120,6 +126,7 @@ func NewClientFromEnv() (*Client, error) {
 		Token:                token,
 		LogsDatasourceUID:    logsUID,
 		MetricsDatasourceUID: metricsUID,
+		TracesDatasourceUID:  os.Getenv("GRAFANA_TRACES_DATASOURCE_UID"),
 	}, nil
 }
 

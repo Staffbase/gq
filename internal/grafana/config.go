@@ -36,6 +36,9 @@ type Config struct {
 	// MetricsDatasourceUID is the Grafana datasource UID for VictoriaMetrics.
 	// Find it in Grafana under Administration → Data Sources → <datasource> → UID.
 	MetricsDatasourceUID string `json:"metrics_datasource_uid"`
+	// TracesDatasourceUID is the optional Grafana datasource UID for VictoriaTraces.
+	// Defaults to DefaultTracesDatasourceUID when unset.
+	TracesDatasourceUID string `json:"traces_datasource_uid,omitempty"`
 }
 
 // InstanceConfig holds per-instance settings in a registry file.
@@ -48,6 +51,7 @@ type InstanceConfig struct {
 	TokenCommand         string `json:"token_command,omitempty"`
 	LogsDatasourceUID    string `json:"logs_datasource_uid"`
 	MetricsDatasourceUID string `json:"metrics_datasource_uid"`
+	TracesDatasourceUID  string `json:"traces_datasource_uid,omitempty"`
 }
 
 // Registry is the multi-instance config format.
@@ -196,6 +200,7 @@ func NewClientFromConfig(path string) (*Client, error) {
 		TokenCommand:         cfg.TokenCommand,
 		LogsDatasourceUID:    cfg.LogsDatasourceUID,
 		MetricsDatasourceUID: cfg.MetricsDatasourceUID,
+		TracesDatasourceUID:  cfg.TracesDatasourceUID,
 	}, nil
 }
 
@@ -207,5 +212,6 @@ func NewClientFromInstance(inst InstanceConfig) *Client {
 		TokenCommand:         inst.TokenCommand,
 		LogsDatasourceUID:    inst.LogsDatasourceUID,
 		MetricsDatasourceUID: inst.MetricsDatasourceUID,
+		TracesDatasourceUID:  inst.TracesDatasourceUID,
 	}
 }

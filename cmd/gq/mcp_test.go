@@ -165,3 +165,55 @@ func TestListLabelValuesTool_ClientError(t *testing.T) {
 		t.Errorf("expected 403 in error")
 	}
 }
+
+// -- traces --
+
+const searchFixture = `{"traces":[{"traceID":"abc","rootServiceName":"web","rootTraceName":"GET /","startTimeUnixNano":"1700000000000000000","durationMs":5}]}`
+
+// IDs are base64 as in Tempo's OTLP JSON: "AQID" = 010203, "BAUG" = 040506.
+const traceFixture = `{"trace":{"resourceSpans":[
+{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"web"}}]},"scopeSpans":[{"spans":[
+ {"traceId":"AQID","spanId":"AQID","parentSpanId":"","name":"GET /","startTimeUnixNano":"1000000000","endTimeUnixNano":"6000000000","status":{}}]}]},
+{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"db"}}]},"scopeSpans":[{"spans":[
+ {"traceId":"AQID","spanId":"BAUG","parentSpanId":"AQID","name":"SELECT","startTimeUnixNano":"2000000000","endTimeUnixNano":"4000000000","status":{"code":"STATUS_CODE_ERROR"}}]}]}]}}`
+
+func TestQueryTracesTool_Hits(t *testing.T) {
+	q := &fakeQuerier{tracesResult: []byte(searchFixture)}
+	result := callTool(t, q, "query_traces", map[string]any{"query": `{ status = error }`})
+	if result.IsError {
+		t.Fatalf("unexpected error: %v", result.Content)
+	}
+	var got []grafana.TraceHit
+	if err := json.Unmarshal([]byte(result.Content[0].(mcp.TextContent).Text), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].RootService != "web" || got[0].RootOperation != "GET /" || got[0].DurationMs != 5 {
+		t.Errorf("unexpected hits: %+v", got)
+	}
+}
+
+func TestQueryTraceByIDTool_Summary(t *testing.T) {
+	q := &fakeQuerier{tracesResult: []byte(traceFixture)}
+	result := callTool(t, q, "query_trace_by_id", map[string]any{"trace_id": "010203"})
+	if result.IsError {
+		t.Fatalf("unexpected error: %v", result.Content)
+	}
+	var s grafana.TraceSummary
+	if err := json.Unmarshal([]byte(result.Content[0].(mcp.TextContent).Text), &s); err != nil {
+		t.Fatal(err)
+	}
+	if s.TraceID != "010203" || s.RootService != "web" || s.DurationMs != 5000 || s.ErrorSpans != 1 ||
+		len(s.ServiceMap) != 1 || s.ServiceMap[0].From != "web" || s.ServiceMap[0].To != "db" {
+		t.Errorf("unexpected summary: %+v", s)
+	}
+	if len(s.Spans) != 2 || s.Spans[1].ParentID != "010203" || s.Spans[1].SpanID != "040506" || !s.Spans[1].Error {
+		t.Errorf("unexpected spans: %+v", s.Spans)
+	}
+}
+
+func TestQueryTracesTool_RequiresQuery(t *testing.T) {
+	result := callTool(t, &fakeQuerier{}, "query_traces", map[string]any{})
+	if !result.IsError {
+		t.Fatal("expected isError=true")
+	}
+}
