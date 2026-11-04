@@ -32,6 +32,8 @@ type fakeQuerier struct {
 	labelErr      error
 	tracesResult  []byte
 	tracesErr     error
+	profileResult []byte
+	profileErr    error
 
 	capturedQuery string
 	capturedStart string
@@ -75,6 +77,18 @@ func (f *fakeQuerier) SearchTraces(query, start, end string, limit int) ([]byte,
 func (f *fakeQuerier) GetTrace(traceID string) ([]byte, error) {
 	f.capturedQuery = traceID
 	return f.tracesResult, f.tracesErr
+}
+
+func (f *fakeQuerier) ProfileTypes() ([]byte, error) { return f.profileResult, f.profileErr }
+
+func (f *fakeQuerier) ProfileLabelValues(label, start, end string) ([]byte, error) {
+	f.capturedQuery = label
+	return f.profileResult, f.profileErr
+}
+
+func (f *fakeQuerier) SelectProfile(profileTypeID, selector, start, end string, maxNodes int) ([]byte, error) {
+	f.capturedQuery = selector
+	return f.profileResult, f.profileErr
 }
 
 var _ grafana.Querier = (*fakeQuerier)(nil)

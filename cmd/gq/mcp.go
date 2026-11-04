@@ -359,6 +359,122 @@ func registerTools(s *server.MCPServer, getClient clientFunc, extraParams ...mcp
 			return mcp.NewToolResultText(string(out)), nil
 		},
 	)
+
+	s.AddTool(
+		mcp.NewTool("query_profile_types",
+			append(extraParams,
+				mcp.WithDescription(
+					"List the profile types available in Pyroscope (CPU, memory, ...). "+
+						"Pass an ID as profile_type to query_profile.",
+				),
+			)...,
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			q, err := getClient(toolArgs(req))
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			raw, err := q.ProfileTypes()
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(prettyJSON(raw)), nil
+		},
+	)
+
+	s.AddTool(
+		mcp.NewTool("query_profile_label_values",
+			append(extraParams,
+				mcp.WithDescription(
+					"List values of a Pyroscope profile label. Use label='service_name' to discover which services have profiles.",
+				),
+				mcp.WithString("label", mcp.Description("Label name (default: service_name).")),
+				mcp.WithString("start", mcp.Description("Start time (default: now-1h).")),
+				mcp.WithString("end", mcp.Description("End time (default: now).")),
+			)...,
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			args := toolArgs(req)
+			q, err := getClient(args)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			label, _ := args["label"].(string)
+			if label == "" {
+				label = "service_name"
+			}
+			start, end := timeRange(args)
+			raw, err := q.ProfileLabelValues(label, start, end)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(prettyJSON(raw)), nil
+		},
+	)
+
+	s.AddTool(
+		mcp.NewTool("query_profile",
+			append(extraParams,
+				mcp.WithDescription(
+					"Query merged profiling data from Pyroscope via Grafana proxy. Returns total cost and the top functions "+
+						"by self cost (hot spots) with their share. 'other' is Pyroscope's bucket for pruned small nodes; a shorter time range prunes less. Example selector: '{service_name=\"backend\"}'",
+				),
+				mcp.WithString("selector", mcp.Required(), mcp.Description("Label selector, e.g. {service_name=\"backend\"}.")),
+				mcp.WithString("profile_type", mcp.Description("Profile type ID from query_profile_types (default: CPU).")),
+				mcp.WithString("start", mcp.Description("Start time (default: now-1h).")),
+				mcp.WithString("end", mcp.Description("End time (default: now).")),
+				mcp.WithNumber("limit", mcp.Description("Number of top functions to return (default 20).")),
+			)...,
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			args := toolArgs(req)
+			q, err := getClient(args)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			selector, _ := args["selector"].(string)
+			if selector == "" {
+				return mcp.NewToolResultError("selector is required"), nil
+			}
+			ptype, _ := args["profile_type"].(string)
+			if ptype == "" {
+				ptype = defaultProfileType
+			}
+			limit := 20
+			if l, ok := args["limit"].(float64); ok {
+				if l <= 0 || l != float64(int(l)) || l > 500 {
+					return mcp.NewToolResultError("limit must be a positive integer not exceeding 500"), nil
+				}
+				limit = int(l)
+			}
+			start, end := timeRange(args)
+			raw, err := q.SelectProfile(ptype, selector, start, end, 200000)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			sum, err := grafana.SummarizeProfile(raw, limit)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			out, _ := json.MarshalIndent(sum, "", "  ")
+			return mcp.NewToolResultText(string(out)), nil
+		},
+	)
+}
+
+const defaultProfileType = "process_cpu:cpu:nanoseconds:cpu:nanoseconds"
+
+// timeRange reads start/end tool args, defaulting to the last hour.
+func timeRange(args map[string]any) (start, end string) {
+	start, _ = args["start"].(string)
+	end, _ = args["end"].(string)
+	if start == "" {
+		start = "now-1h"
+	}
+	if end == "" {
+		end = "now"
+	}
+	return start, end
 }
 
 func toolArgs(req mcp.CallToolRequest) map[string]any {

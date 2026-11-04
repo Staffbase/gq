@@ -39,6 +39,9 @@ type Config struct {
 	// TracesDatasourceUID is the optional Grafana datasource UID for VictoriaTraces.
 	// Defaults to DefaultTracesDatasourceUID when unset.
 	TracesDatasourceUID string `json:"traces_datasource_uid,omitempty"`
+	// ProfilesDatasourceUID is the optional Grafana datasource UID for Pyroscope.
+	// Defaults to DefaultProfilesDatasourceUID when unset.
+	ProfilesDatasourceUID string `json:"profiles_datasource_uid,omitempty"`
 }
 
 // InstanceConfig holds per-instance settings in a registry file.
@@ -48,10 +51,11 @@ type InstanceConfig struct {
 	Token string `json:"token,omitempty"`
 	// TokenCommand overrides the registry-level default for this instance.
 	// {url} is substituted with this instance's URL before execution.
-	TokenCommand         string `json:"token_command,omitempty"`
-	LogsDatasourceUID    string `json:"logs_datasource_uid"`
-	MetricsDatasourceUID string `json:"metrics_datasource_uid"`
-	TracesDatasourceUID  string `json:"traces_datasource_uid,omitempty"`
+	TokenCommand          string `json:"token_command,omitempty"`
+	LogsDatasourceUID     string `json:"logs_datasource_uid"`
+	MetricsDatasourceUID  string `json:"metrics_datasource_uid"`
+	TracesDatasourceUID   string `json:"traces_datasource_uid,omitempty"`
+	ProfilesDatasourceUID string `json:"profiles_datasource_uid,omitempty"`
 }
 
 // Registry is the multi-instance config format.
@@ -195,23 +199,25 @@ func NewClientFromConfig(path string) (*Client, error) {
 		return nil, fmt.Errorf("config file %s is a registry; use --instance <name> to select an instance (available: %s)", path, strings.Join(reg.InstanceNames(), ", "))
 	}
 	return &Client{
-		BaseURL:              strings.TrimRight(cfg.URL, "/"),
-		Token:                cfg.Token,
-		TokenCommand:         cfg.TokenCommand,
-		LogsDatasourceUID:    cfg.LogsDatasourceUID,
-		MetricsDatasourceUID: cfg.MetricsDatasourceUID,
-		TracesDatasourceUID:  cfg.TracesDatasourceUID,
+		BaseURL:               strings.TrimRight(cfg.URL, "/"),
+		Token:                 cfg.Token,
+		TokenCommand:          cfg.TokenCommand,
+		LogsDatasourceUID:     cfg.LogsDatasourceUID,
+		MetricsDatasourceUID:  cfg.MetricsDatasourceUID,
+		TracesDatasourceUID:   cfg.TracesDatasourceUID,
+		ProfilesDatasourceUID: cfg.ProfilesDatasourceUID,
 	}, nil
 }
 
 // NewClientFromInstance builds a Client from a resolved InstanceConfig.
 func NewClientFromInstance(inst InstanceConfig) *Client {
 	return &Client{
-		BaseURL:              strings.TrimRight(inst.URL, "/"),
-		Token:                inst.Token,
-		TokenCommand:         inst.TokenCommand,
-		LogsDatasourceUID:    inst.LogsDatasourceUID,
-		MetricsDatasourceUID: inst.MetricsDatasourceUID,
-		TracesDatasourceUID:  inst.TracesDatasourceUID,
+		BaseURL:               strings.TrimRight(inst.URL, "/"),
+		Token:                 inst.Token,
+		TokenCommand:          inst.TokenCommand,
+		LogsDatasourceUID:     inst.LogsDatasourceUID,
+		MetricsDatasourceUID:  inst.MetricsDatasourceUID,
+		TracesDatasourceUID:   inst.TracesDatasourceUID,
+		ProfilesDatasourceUID: inst.ProfilesDatasourceUID,
 	}
 }

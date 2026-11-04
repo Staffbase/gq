@@ -217,3 +217,52 @@ func TestQueryTracesTool_RequiresQuery(t *testing.T) {
 		t.Fatal("expected isError=true")
 	}
 }
+
+// -- profiles --
+
+// Nodes are [offset delta, total, self, name index]; root has total 100, self 10.
+const profileFixture = `{"flamegraph":{"names":["total","main","work","main"],"total":"100",
+"levels":[{"values":["0","100","10","0"]},{"values":["0","90","30","1","0","0","0","0"]},{"values":["0","60","60","2"]}]}}`
+
+func TestQueryProfileTool_TopFunctions(t *testing.T) {
+	q := &fakeQuerier{profileResult: []byte(profileFixture)}
+	result := callTool(t, q, "query_profile", map[string]any{"selector": `{service_name="x"}`, "limit": float64(2)})
+	if result.IsError {
+		t.Fatalf("unexpected error: %v", result.Content)
+	}
+	var got grafana.ProfileSummary
+	if err := json.Unmarshal([]byte(result.Content[0].(mcp.TextContent).Text), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Total != 100 || len(got.TopFunctions) != 2 ||
+		got.TopFunctions[0].Name != "work" || got.TopFunctions[0].SelfPct != 60 ||
+		got.TopFunctions[1].Name != "main" || got.TopFunctions[1].Self != 30 {
+		t.Errorf("unexpected summary: %+v", got)
+	}
+	if q.capturedQuery != `{service_name="x"}` {
+		t.Errorf("selector not passed: %q", q.capturedQuery)
+	}
+}
+
+func TestQueryProfileTool_EmptyProfile(t *testing.T) {
+	q := &fakeQuerier{profileResult: []byte(`{"flamegraph":{"names":[],"total":"0","levels":[]}}`)}
+	result := callTool(t, q, "query_profile", map[string]any{"selector": "{}"})
+	if !result.IsError {
+		t.Fatal("expected isError=true for empty profile")
+	}
+}
+
+func TestQueryProfileTool_RequiresSelector(t *testing.T) {
+	result := callTool(t, &fakeQuerier{}, "query_profile", map[string]any{})
+	if !result.IsError {
+		t.Fatal("expected isError=true")
+	}
+}
+
+func TestQueryProfileLabelValuesTool_DefaultsToServiceName(t *testing.T) {
+	q := &fakeQuerier{profileResult: []byte(`{"names":["backend"]}`)}
+	callTool(t, q, "query_profile_label_values", map[string]any{})
+	if q.capturedQuery != "service_name" {
+		t.Errorf("label = %q", q.capturedQuery)
+	}
+}

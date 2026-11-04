@@ -46,6 +46,9 @@ type Querier interface {
 	ListLabelValues(label, match string) ([]string, error)
 	SearchTraces(query, start, end string, limit int) ([]byte, error)
 	GetTrace(traceID string) ([]byte, error)
+	ProfileTypes() ([]byte, error)
+	ProfileLabelValues(label, start, end string) ([]byte, error)
+	SelectProfile(profileTypeID, selector, start, end string, maxNodes int) ([]byte, error)
 }
 
 // Client holds connection config for the Grafana proxy.
@@ -74,6 +77,9 @@ type Client struct {
 	// TracesDatasourceUID is the Grafana datasource UID for VictoriaTraces.
 	// Optional: DefaultTracesDatasourceUID is used when empty.
 	TracesDatasourceUID string
+	// ProfilesDatasourceUID is the Grafana datasource UID for Pyroscope.
+	// Optional: DefaultProfilesDatasourceUID is used when empty.
+	ProfilesDatasourceUID string
 	// HTTPClient is optional; when nil a client with defaultHTTPTimeout is used.
 	HTTPClient *http.Client
 }
@@ -90,9 +96,9 @@ func (c *Client) httpClient() *http.Client {
 //     For registry format, returns an error directing users to use --instance.
 //  2. Individual env vars: GRAFANA_URL, GRAFANA_SERVICE_ACCOUNT_TOKEN or
 //     GRAFANA_COOKIE, GRAFANA_LOGS_DATASOURCE_UID, GRAFANA_METRICS_DATASOURCE_UID,
-//     and optionally GRAFANA_TRACES_DATASOURCE_UID
+//     and optionally GRAFANA_TRACES_DATASOURCE_UID, GRAFANA_PROFILES_DATASOURCE_UID
 //
-// All fields except the traces UID are required. Find datasource UIDs in Grafana under
+// All fields except the traces and profiles UIDs are required. Find datasource UIDs in Grafana under
 // Administration → Data Sources → <datasource> → UID.
 //
 // Returns an error if any required field is missing.
@@ -121,12 +127,13 @@ func NewClientFromEnv() (*Client, error) {
 		return nil, fmt.Errorf("GRAFANA_METRICS_DATASOURCE_UID environment variable is required (find it in Grafana under Administration → Data Sources)")
 	}
 	return &Client{
-		BaseURL:              strings.TrimRight(baseURL, "/"),
-		Cookie:               cookie,
-		Token:                token,
-		LogsDatasourceUID:    logsUID,
-		MetricsDatasourceUID: metricsUID,
-		TracesDatasourceUID:  os.Getenv("GRAFANA_TRACES_DATASOURCE_UID"),
+		BaseURL:               strings.TrimRight(baseURL, "/"),
+		Cookie:                cookie,
+		Token:                 token,
+		LogsDatasourceUID:     logsUID,
+		MetricsDatasourceUID:  metricsUID,
+		TracesDatasourceUID:   os.Getenv("GRAFANA_TRACES_DATASOURCE_UID"),
+		ProfilesDatasourceUID: os.Getenv("GRAFANA_PROFILES_DATASOURCE_UID"),
 	}, nil
 }
 
