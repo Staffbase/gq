@@ -281,6 +281,7 @@ func registerTools(s *server.MCPServer, getClient clientFunc, extraParams ...mcp
 				mcp.WithDescription(
 					"Search traces in VictoriaTraces using TraceQL via Grafana proxy. Returns one headline per trace: "+
 						"trace ID, root service/operation, start time, duration. Use query_trace_by_id for the spans and service map. "+
+						"Wide time ranges are slow; keep start close to now. "+
 						"Example: '{ resource.service.name = \"frontend\" && status = error }'",
 				),
 				mcp.WithString("query", mcp.Required(), mcp.Description("TraceQL query expression.")),

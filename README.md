@@ -116,6 +116,17 @@ gq metrics -q "up{namespace=\"my-service\"}" --start now-1h --step 60s
 # Instant metrics query (PromQL)
 gq instant -q "http_requests_total{namespace=\"my-service\"}"
 
+# Search traces (TraceQL); keep --start close to now, wide ranges are slow
+gq traces -q '{ resource.service.name = "frontend" && status = error }' --start now-15m
+
+# Show one trace: summary, service map and spans
+gq trace <trace-id>
+
+# Top functions by self cost from Pyroscope (CPU by default)
+gq profile-labels                                   # which services have profiles
+gq profile -s '{service_name="backend"}' --limit 10
+gq profile-types                                    # other profile types, for --type
+
 # Pick an instance, when GRAFANA_CONFIG holds several
 gq query -q "severity:ERROR _time:1h" --instance prod
 gq metrics -q "up" --instance staging

@@ -44,6 +44,7 @@ type fakeQuerier struct {
 	capturedStep  string
 	capturedLimit int
 	capturedTime  string
+	capturedType  string
 }
 
 func (f *fakeQuerier) QueryLogs(query, start, end string, limit int) ([]byte, error) {
@@ -74,6 +75,8 @@ func (f *fakeQuerier) ListLabelValues(label, match string) ([]string, error) {
 
 func (f *fakeQuerier) SearchTraces(query, start, end string, limit int) ([]grafana.TraceHit, error) {
 	f.capturedQuery = query
+	f.capturedStart = start
+	f.capturedLimit = limit
 	return f.hits, f.tracesErr
 }
 
@@ -88,11 +91,14 @@ func (f *fakeQuerier) ProfileTypes() ([]grafana.ProfileType, error) {
 
 func (f *fakeQuerier) ProfileLabelValues(label, start, end string) ([]string, error) {
 	f.capturedQuery = label
+	f.capturedStart = start
 	return f.profileValues, f.profileErr
 }
 
 func (f *fakeQuerier) SelectProfile(profileTypeID, selector, start, end string, top int) (*grafana.ProfileSummary, error) {
 	f.capturedQuery = selector
+	f.capturedType = profileTypeID
+	f.capturedStart = start
 	f.capturedLimit = top
 	return f.profile, f.profileErr
 }
@@ -230,5 +236,96 @@ func TestRunInstant_MissingQueryFlag(t *testing.T) {
 	cmd.SetArgs([]string{"instant"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("expected error when -q flag is missing")
+	}
+}
+
+// -- traces and profiles commands --
+
+func TestRunTraces_DefaultsAndFlags(t *testing.T) {
+	q := &fakeQuerier{hits: []grafana.TraceHit{{TraceID: "abc"}}}
+	withFakeQuerier(t, q)
+	cmd := buildRootCmd()
+	cmd.SetArgs([]string{"traces", "-q", "{ status = error }"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if q.capturedQuery != "{ status = error }" || q.capturedStart != "now-1h" || q.capturedLimit != 20 {
+		t.Errorf("query %q, start %q, limit %d", q.capturedQuery, q.capturedStart, q.capturedLimit)
+	}
+
+	cmd = buildRootCmd()
+	cmd.SetArgs([]string{"traces", "-q", "{}", "--start", "now-5m", "--limit", "3"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if q.capturedStart != "now-5m" || q.capturedLimit != 3 {
+		t.Errorf("start %q, limit %d", q.capturedStart, q.capturedLimit)
+	}
+}
+
+func TestRunTrace_PassesID(t *testing.T) {
+	q := &fakeQuerier{trace: &grafana.TraceSummary{TraceID: "010203"}}
+	withFakeQuerier(t, q)
+	cmd := buildRootCmd()
+	cmd.SetArgs([]string{"trace", "010203"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if q.capturedQuery != "010203" {
+		t.Errorf("id = %q", q.capturedQuery)
+	}
+}
+
+func TestRunProfile_DefaultsAndFlags(t *testing.T) {
+	q := &fakeQuerier{profile: &grafana.ProfileSummary{Total: 1}}
+	withFakeQuerier(t, q)
+	cmd := buildRootCmd()
+	cmd.SetArgs([]string{"profile", "-s", `{service_name="x"}`})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if q.capturedQuery != `{service_name="x"}` || q.capturedType != defaultProfileType || q.capturedLimit != 20 {
+		t.Errorf("selector %q, type %q, limit %d", q.capturedQuery, q.capturedType, q.capturedLimit)
+	}
+
+	cmd = buildRootCmd()
+	cmd.SetArgs([]string{"profile", "-s", "{}", "--type", "memory:alloc", "--limit", "5"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if q.capturedType != "memory:alloc" || q.capturedLimit != 5 {
+		t.Errorf("type %q, limit %d", q.capturedType, q.capturedLimit)
+	}
+}
+
+func TestRunProfileLabels_DefaultsToServiceName(t *testing.T) {
+	q := &fakeQuerier{profileValues: []string{"backend"}}
+	withFakeQuerier(t, q)
+	cmd := buildRootCmd()
+	cmd.SetArgs([]string{"profile-labels"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if q.capturedQuery != "service_name" {
+		t.Errorf("label = %q", q.capturedQuery)
+	}
+}
+
+func TestTraceAndProfileCommands_RequiredArgs(t *testing.T) {
+	for _, args := range [][]string{{"traces"}, {"trace"}, {"profile"}} {
+		cmd := buildRootCmd()
+		cmd.SetArgs(args)
+		if err := cmd.Execute(); err == nil {
+			t.Errorf("%v: expected an error for missing arguments", args)
+		}
+	}
+}
+
+func TestProfileTypesCommand(t *testing.T) {
+	withFakeQuerier(t, &fakeQuerier{profileTypes: []grafana.ProfileType{{ID: "cpu"}}})
+	cmd := buildRootCmd()
+	cmd.SetArgs([]string{"profile-types"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
