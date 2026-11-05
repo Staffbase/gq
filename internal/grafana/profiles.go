@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"time"
 )
 
 // DefaultProfilesDatasourceUID is the UID mops provisions for Pyroscope on
@@ -42,8 +43,13 @@ type ProfileType struct {
 }
 
 // ProfileTypes lists the profile types Pyroscope holds.
-func (c *Client) ProfileTypes() ([]ProfileType, error) {
-	raw, err := c.postProfiles("ProfileTypes", map[string]any{})
+// Without a range Pyroscope only checks ingesters, missing older profiles.
+func (c *Client) ProfileTypes(start, end string) ([]ProfileType, error) {
+	body, err := withRange(map[string]any{}, start, end)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := c.postProfiles("ProfileTypes", body)
 	if err != nil {
 		return nil, err
 	}
@@ -108,18 +114,36 @@ func (c *Client) SelectProfile(profileTypeID, selector, start, end string, top i
 // withRange adds Pyroscope's start/end (Unix milliseconds) to body.
 func withRange(body map[string]any, start, end string) (map[string]any, error) {
 	for k, v := range map[string]string{"start": start, "end": end} {
-		sec, err := resolveSeconds(v)
+		ms, err := resolveMillis(v)
 		if err != nil {
 			return nil, err
 		}
-		if sec == "" {
-			continue
+		if ms != nil {
+			body[k] = *ms
 		}
-		n, _ := strconv.ParseInt(sec, 10, 64)
-		body[k] = n * 1000
 	}
 	return body, nil
 }
+
+// resolveMillis resolves s like resolveTime to Unix milliseconds, keeping
+// RFC3339 fractions. nil means s is empty.
+func resolveMillis(s string) (*int64, error) {
+	r, err := resolveTime(s)
+	if err != nil || r == "" {
+		return nil, err
+	}
+	n, err := strconv.ParseInt(r, 10, 64)
+	if err != nil {
+		t, terr := time.Parse(time.RFC3339, r)
+		if terr != nil {
+			return nil, fmt.Errorf("invalid time %q", s)
+		}
+		return ptr(t.UnixMilli()), nil
+	}
+	return ptr(n * 1000), nil
+}
+
+func ptr[T any](v T) *T { return &v }
 
 func (c *Client) postProfiles(method string, body map[string]any) ([]byte, error) {
 	uid := c.ProfilesDatasourceUID

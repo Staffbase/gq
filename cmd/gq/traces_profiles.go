@@ -71,6 +71,8 @@ func buildProfileTypesCmd() *cobra.Command {
 		Short: "List the profile types available in Pyroscope",
 		RunE:  runProfileTypes,
 	}
+	cmd.Flags().String("start", "now-1h", "Start time")
+	cmd.Flags().String("end", "now", "End time")
 	cmd.Flags().String("instance", "", "Grafana instance name (registry mode)")
 	return cmd
 }
@@ -142,7 +144,9 @@ func runProfileTypes(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	types, err := q.ProfileTypes()
+	start, _ := cmd.Flags().GetString("start")
+	end, _ := cmd.Flags().GetString("end")
+	types, err := q.ProfileTypes(start, end)
 	if err != nil {
 		return err
 	}

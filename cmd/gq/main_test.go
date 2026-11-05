@@ -85,7 +85,7 @@ func (f *fakeQuerier) GetTrace(traceID string) (*grafana.TraceSummary, error) {
 	return f.trace, f.tracesErr
 }
 
-func (f *fakeQuerier) ProfileTypes() ([]grafana.ProfileType, error) {
+func (f *fakeQuerier) ProfileTypes(start, end string) ([]grafana.ProfileType, error) {
 	return f.profileTypes, f.profileErr
 }
 

@@ -360,14 +360,18 @@ func registerTools(s *server.MCPServer, getClient clientFunc, extraParams ...mcp
 					"List the profile types available in Pyroscope (CPU, memory, ...). "+
 						"Pass an ID as profile_type to query_profile.",
 				),
+				mcp.WithString("start", mcp.Description("Start time (default: now-1h).")),
+				mcp.WithString("end", mcp.Description("End time (default: now).")),
 			)...,
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			q, err := getClient(toolArgs(req))
+			args := toolArgs(req)
+			q, err := getClient(args)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
-			types, err := q.ProfileTypes()
+			start, end := timeRange(args)
+			types, err := q.ProfileTypes(start, end)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}

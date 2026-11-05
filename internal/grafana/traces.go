@@ -243,6 +243,8 @@ func summarizeTrace(raw []byte) (*TraceSummary, error) {
 	}
 	services := map[string]bool{}
 	edges := map[[2]string]int{}
+	var rootSet, rootParentless bool
+	var rootStart int64
 	for i := range spans {
 		s := &spans[i]
 		s.StartMs = float64(s.start-minStart) / 1e6
@@ -255,8 +257,10 @@ func summarizeTrace(raw []byte) (*TraceSummary, error) {
 			if ps != s.Service {
 				edges[[2]string{ps, s.Service}]++
 			}
-		} else if sum.RootOperation == "" {
-			// First span whose parent is absent is the root.
+		} else if parentless := s.ParentID == ""; !rootSet ||
+			(parentless && !rootParentless) || (parentless == rootParentless && s.start < rootStart) {
+			// Root: a parentless span, else the earliest orphan (partial trace).
+			rootSet, rootParentless, rootStart = true, parentless, s.start
 			sum.RootService, sum.RootOperation = s.Service, s.Operation
 		}
 		sum.Spans = append(sum.Spans, s.SpanSummary)

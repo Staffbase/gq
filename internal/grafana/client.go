@@ -45,7 +45,7 @@ type Querier interface {
 	ListLabelValues(label, match string) ([]string, error)
 	SearchTraces(query, start, end string, limit int) ([]TraceHit, error)
 	GetTrace(traceID string) (*TraceSummary, error)
-	ProfileTypes() ([]ProfileType, error)
+	ProfileTypes(start, end string) ([]ProfileType, error)
 	ProfileLabelValues(label, start, end string) ([]string, error)
 	SelectProfile(profileTypeID, selector, start, end string, top int) (*ProfileSummary, error)
 }

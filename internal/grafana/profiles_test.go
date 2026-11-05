@@ -69,7 +69,7 @@ func TestSelectProfile_EmptyProfile(t *testing.T) {
 
 func TestProfileTypesAndLabelValues(t *testing.T) {
 	c, path, _ := profilesServer(t, `{"profileTypes":[{"ID":"cpu:1","name":"process_cpu","sampleType":"cpu","sampleUnit":"nanoseconds"}]}`)
-	types, err := c.ProfileTypes()
+	types, err := c.ProfileTypes("", "")
 	if err != nil || len(types) != 1 || types[0] != (ProfileType{ID: "cpu:1", Name: "process_cpu", SampleType: "cpu", SampleUnit: "nanoseconds"}) {
 		t.Fatalf("types = %+v, err = %v", types, err)
 	}
@@ -81,5 +81,17 @@ func TestProfileTypesAndLabelValues(t *testing.T) {
 	values, err := c.ProfileLabelValues("service_name", "", "")
 	if err != nil || len(values) != 2 || values[0] != "backend" {
 		t.Fatalf("values = %v, err = %v", values, err)
+	}
+}
+
+func TestProfileRange_KeepsFractionalSeconds(t *testing.T) {
+	c, _, body := profilesServer(t, `{"profileTypes":[]}`)
+	if _, err := c.ProfileTypes("2023-11-14T22:13:20.100Z", "2023-11-14T22:13:20.900Z"); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"start":1700000000100`, `"end":1700000000900`} {
+		if !strings.Contains(*body, want) {
+			t.Errorf("body %q missing %q", *body, want)
+		}
 	}
 }

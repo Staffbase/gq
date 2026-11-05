@@ -129,3 +129,17 @@ func TestSummarizeTrace_BadTimestampsAreErrors(t *testing.T) {
 		t.Error("search: expected an error for a bad start time")
 	}
 }
+
+func TestGetTrace_RootPrefersParentlessOverEarlierOrphan(t *testing.T) {
+	// The orphan DB span comes first in the payload and starts earlier.
+	body := `{"trace":{"resourceSpans":[
+{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"db"}}]},"scopeSpans":[{"spans":[
+ {"traceId":"AQID","spanId":"BAUG","parentSpanId":"BwgJ","name":"SELECT","startTimeUnixNano":"1000000000","endTimeUnixNano":"2000000000","status":{}}]}]},
+{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"web"}}]},"scopeSpans":[{"spans":[
+ {"traceId":"AQID","spanId":"AQID","parentSpanId":"","name":"GET /","startTimeUnixNano":"2000000000","endTimeUnixNano":"6000000000","status":{}}]}]}]}}`
+	c, _, _ := tracesServer(t, body)
+	s, err := c.GetTrace("010203")
+	if err != nil || s.RootService != "web" || s.RootOperation != "GET /" {
+		t.Fatalf("root = %s %s, err = %v", s.RootService, s.RootOperation, err)
+	}
+}
