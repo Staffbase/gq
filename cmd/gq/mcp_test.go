@@ -165,3 +165,85 @@ func TestListLabelValuesTool_ClientError(t *testing.T) {
 		t.Errorf("expected 403 in error")
 	}
 }
+
+// -- traces --
+
+func TestQueryTracesTool_Hits(t *testing.T) {
+	q := &fakeQuerier{hits: []grafana.TraceHit{{TraceID: "abc", RootService: "web", DurationMs: 5}}}
+	result := callTool(t, q, "query_traces", map[string]any{"query": `{ status = error }`})
+	if result.IsError {
+		t.Fatalf("unexpected error: %v", result.Content)
+	}
+	var got []grafana.TraceHit
+	if err := json.Unmarshal([]byte(result.Content[0].(mcp.TextContent).Text), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].TraceID != "abc" || q.capturedQuery != `{ status = error }` {
+		t.Errorf("unexpected hits %+v, query %q", got, q.capturedQuery)
+	}
+}
+
+func TestQueryTraceByIDTool(t *testing.T) {
+	q := &fakeQuerier{trace: &grafana.TraceSummary{TraceID: "010203", RootService: "web"}}
+	result := callTool(t, q, "query_trace_by_id", map[string]any{"trace_id": "010203"})
+	if result.IsError {
+		t.Fatalf("unexpected error: %v", result.Content)
+	}
+	if !strings.Contains(result.Content[0].(mcp.TextContent).Text, `"rootService": "web"`) || q.capturedQuery != "010203" {
+		t.Errorf("unexpected result %v, id %q", result.Content, q.capturedQuery)
+	}
+}
+
+func TestTraceTools_RequiredArgs(t *testing.T) {
+	for tool, want := range map[string]string{"query_traces": "query is required", "query_trace_by_id": "trace_id is required"} {
+		result := callTool(t, &fakeQuerier{}, tool, map[string]any{})
+		if !result.IsError || !strings.Contains(result.Content[0].(mcp.TextContent).Text, want) {
+			t.Errorf("%s: expected error %q, got %v", tool, want, result.Content)
+		}
+	}
+}
+
+func TestQueryTracesTool_ClientError(t *testing.T) {
+	q := &fakeQuerier{tracesErr: errors.New("HTTP 502: bad gateway")}
+	result := callTool(t, q, "query_traces", map[string]any{"query": "{}"})
+	if !result.IsError || !strings.Contains(result.Content[0].(mcp.TextContent).Text, "502") {
+		t.Fatalf("expected 502 error, got %v", result.Content)
+	}
+}
+
+// -- profiles --
+
+func TestQueryProfileTool_PassesSelectorAndLimit(t *testing.T) {
+	q := &fakeQuerier{profile: &grafana.ProfileSummary{Total: 100, TopFunctions: []grafana.ProfileFunc{{Name: "work", Self: 60, SelfPct: 60}}}}
+	result := callTool(t, q, "query_profile", map[string]any{"selector": `{service_name="x"}`, "limit": float64(5)})
+	if result.IsError {
+		t.Fatalf("unexpected error: %v", result.Content)
+	}
+	if q.capturedQuery != `{service_name="x"}` || q.capturedLimit != 5 {
+		t.Errorf("selector %q, limit %d", q.capturedQuery, q.capturedLimit)
+	}
+	if !strings.Contains(result.Content[0].(mcp.TextContent).Text, `"name": "work"`) {
+		t.Errorf("unexpected result %v", result.Content)
+	}
+}
+
+func TestQueryProfileTool_Validation(t *testing.T) {
+	cases := map[string]map[string]any{
+		"selector is required": {},
+		"limit must be":        {"selector": "{}", "limit": float64(501)},
+	}
+	for want, args := range cases {
+		result := callTool(t, &fakeQuerier{}, "query_profile", args)
+		if !result.IsError || !strings.Contains(result.Content[0].(mcp.TextContent).Text, want) {
+			t.Errorf("args %v: expected error %q, got %v", args, want, result.Content)
+		}
+	}
+}
+
+func TestQueryProfileLabelValuesTool_DefaultsToServiceName(t *testing.T) {
+	q := &fakeQuerier{profileValues: []string{"backend"}}
+	callTool(t, q, "query_profile_label_values", map[string]any{})
+	if q.capturedQuery != "service_name" {
+		t.Errorf("label = %q", q.capturedQuery)
+	}
+}

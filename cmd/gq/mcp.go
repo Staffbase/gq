@@ -121,7 +121,7 @@ func (cc *clientCache) querierFor(args map[string]any) (grafana.Querier, error) 
 	return c, nil
 }
 
-// registerTools registers all four gq tools on s.
+// registerTools registers all gq tools on s.
 // getClient is called per-request to resolve the Querier.
 // extraParams are prepended to every tool's parameter list (e.g. "instance").
 func registerTools(s *server.MCPServer, getClient clientFunc, extraParams ...mcp.ToolOption) {
@@ -274,6 +274,202 @@ func registerTools(s *server.MCPServer, getClient clientFunc, extraParams ...mcp
 			return mcp.NewToolResultText(string(out)), nil
 		},
 	)
+
+	s.AddTool(
+		mcp.NewTool("query_traces",
+			append(extraParams,
+				mcp.WithDescription(
+					"Search traces in VictoriaTraces using TraceQL via Grafana proxy. Returns one headline per trace: "+
+						"trace ID, root service/operation, start time, duration. Use query_trace_by_id for the spans and service map. "+
+						"Wide time ranges are slow; keep start close to now. "+
+						"Example: '{ resource.service.name = \"frontend\" && status = error }'",
+				),
+				mcp.WithString("query", mcp.Required(), mcp.Description("TraceQL query expression.")),
+				mcp.WithString("start", mcp.Description("Start time: RFC3339, Unix timestamp, or relative (default: now-1h).")),
+				mcp.WithString("end", mcp.Description("End time (default: now).")),
+				mcp.WithNumber("limit", mcp.Description("Max traces to return (default 20).")),
+			)...,
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			args := toolArgs(req)
+			q, err := getClient(args)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			query, _ := args["query"].(string)
+			if query == "" {
+				return mcp.NewToolResultError("query is required"), nil
+			}
+			start, _ := args["start"].(string)
+			end, _ := args["end"].(string)
+			if start == "" {
+				start = "now-1h"
+			}
+			if end == "" {
+				end = "now"
+			}
+			limit := 20
+			if l, ok := args["limit"].(float64); ok {
+				if l <= 0 || l != float64(int(l)) || l > 1000 {
+					return mcp.NewToolResultError("limit must be a positive integer not exceeding 1000"), nil
+				}
+				limit = int(l)
+			}
+			hits, err := q.SearchTraces(query, start, end, limit)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			out, _ := json.MarshalIndent(hits, "", "  ")
+			return mcp.NewToolResultText(string(out)), nil
+		},
+	)
+
+	s.AddTool(
+		mcp.NewTool("query_trace_by_id",
+			append(extraParams,
+				mcp.WithDescription(
+					"Fetch one trace from VictoriaTraces by trace ID. Returns the summary (root span, duration, "+
+						"error count, service map of caller→callee) plus every span with parent, service, operation, offset and duration.",
+				),
+				mcp.WithString("trace_id", mcp.Required(), mcp.Description("Trace ID (hex).")),
+			)...,
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			args := toolArgs(req)
+			q, err := getClient(args)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			id, _ := args["trace_id"].(string)
+			if id == "" {
+				return mcp.NewToolResultError("trace_id is required"), nil
+			}
+			sum, err := q.GetTrace(id)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			out, _ := json.MarshalIndent(sum, "", "  ")
+			return mcp.NewToolResultText(string(out)), nil
+		},
+	)
+
+	s.AddTool(
+		mcp.NewTool("query_profile_types",
+			append(extraParams,
+				mcp.WithDescription(
+					"List the profile types available in Pyroscope (CPU, memory, ...). "+
+						"Pass an ID as profile_type to query_profile.",
+				),
+				mcp.WithString("start", mcp.Description("Start time (default: now-1h).")),
+				mcp.WithString("end", mcp.Description("End time (default: now).")),
+			)...,
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			args := toolArgs(req)
+			q, err := getClient(args)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			start, end := timeRange(args)
+			types, err := q.ProfileTypes(start, end)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			out, _ := json.MarshalIndent(types, "", "  ")
+			return mcp.NewToolResultText(string(out)), nil
+		},
+	)
+
+	s.AddTool(
+		mcp.NewTool("query_profile_label_values",
+			append(extraParams,
+				mcp.WithDescription(
+					"List values of a Pyroscope profile label. Use label='service_name' to discover which services have profiles.",
+				),
+				mcp.WithString("label", mcp.Description("Label name (default: service_name).")),
+				mcp.WithString("start", mcp.Description("Start time (default: now-1h).")),
+				mcp.WithString("end", mcp.Description("End time (default: now).")),
+			)...,
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			args := toolArgs(req)
+			q, err := getClient(args)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			label, _ := args["label"].(string)
+			if label == "" {
+				label = "service_name"
+			}
+			start, end := timeRange(args)
+			values, err := q.ProfileLabelValues(label, start, end)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			out, _ := json.MarshalIndent(values, "", "  ")
+			return mcp.NewToolResultText(string(out)), nil
+		},
+	)
+
+	s.AddTool(
+		mcp.NewTool("query_profile",
+			append(extraParams,
+				mcp.WithDescription(
+					"Query merged profiling data from Pyroscope via Grafana proxy. Returns total cost and the top functions "+
+						"by self cost (hot spots) with their share. 'other' is Pyroscope's bucket for pruned small nodes; a shorter time range prunes less. Example selector: '{service_name=\"backend\"}'",
+				),
+				mcp.WithString("selector", mcp.Required(), mcp.Description("Label selector, e.g. {service_name=\"backend\"}.")),
+				mcp.WithString("profile_type", mcp.Description("Profile type ID from query_profile_types (default: CPU).")),
+				mcp.WithString("start", mcp.Description("Start time (default: now-1h).")),
+				mcp.WithString("end", mcp.Description("End time (default: now).")),
+				mcp.WithNumber("limit", mcp.Description("Number of top functions to return (default 20).")),
+			)...,
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			args := toolArgs(req)
+			q, err := getClient(args)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			selector, _ := args["selector"].(string)
+			if selector == "" {
+				return mcp.NewToolResultError("selector is required"), nil
+			}
+			ptype, _ := args["profile_type"].(string)
+			if ptype == "" {
+				ptype = defaultProfileType
+			}
+			limit := 20
+			if l, ok := args["limit"].(float64); ok {
+				if l <= 0 || l != float64(int(l)) || l > 500 {
+					return mcp.NewToolResultError("limit must be a positive integer not exceeding 500"), nil
+				}
+				limit = int(l)
+			}
+			start, end := timeRange(args)
+			sum, err := q.SelectProfile(ptype, selector, start, end, limit)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			out, _ := json.MarshalIndent(sum, "", "  ")
+			return mcp.NewToolResultText(string(out)), nil
+		},
+	)
+}
+
+const defaultProfileType = "process_cpu:cpu:nanoseconds:cpu:nanoseconds"
+
+// timeRange reads start/end tool args, defaulting to the last hour.
+func timeRange(args map[string]any) (start, end string) {
+	start, _ = args["start"].(string)
+	end, _ = args["end"].(string)
+	if start == "" {
+		start = "now-1h"
+	}
+	if end == "" {
+		end = "now"
+	}
+	return start, end
 }
 
 func toolArgs(req mcp.CallToolRequest) map[string]any {
