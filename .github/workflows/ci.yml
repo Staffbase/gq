@@ -9,6 +9,12 @@ on:
 permissions:
   contents: read
 
+# Cancel outdated runs of every pull request, so the Dependabot auto-merge job
+# of an older run doesn't approve a newer commit before its checks pass.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   test:
     name: Test
@@ -49,3 +55,13 @@ jobs:
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.12.2
+
+  # Approves and auto-merges Dependabot PRs once test and lint are green, as
+  # the org's GitHub App, which the required code owner review exempts.
+  dependabot-auto-merge:
+    name: Auto Merge (Dependabot)
+    needs: [test, lint]
+    uses: Staffbase/gha-workflows/.github/workflows/template_automerge_dependabot.yml@a800734194905ec6b95f9c47aab5f69b15e5cfff # v20.0.0
+    secrets:
+      client_id: ${{ vars.STAFFBASE_ACTIONS_CLIENT_ID }}
+      private_key: ${{ secrets.STAFFBASE_ACTIONS_PRIVATE_KEY }}
