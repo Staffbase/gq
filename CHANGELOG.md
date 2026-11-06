@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/Staffbase/gq/compare/v0.2.0...v0.3.0) (2026-11-06)
+
+
+### Features
+
+* **CORE-4808:** add trace and profile query tools to gq mcp ([#53](https://github.com/Staffbase/gq/issues/53)) ([c93d0c9](https://github.com/Staffbase/gq/commit/c93d0c9077698fccb91187d66bb8b39961c7b19e))
+
+
+### Bug Fixes
+
+* allow Copilot in CLA allowlist ([#49](https://github.com/Staffbase/gq/issues/49)) ([8aa298f](https://github.com/Staffbase/gq/commit/8aa298ffc7de80e3dea866216a906c15afc4b250))
+
 ## [0.2.0](https://github.com/Staffbase/gq/compare/v0.1.0...v0.2.0) (2026-07-31)
 
 
