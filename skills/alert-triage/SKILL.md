@@ -81,18 +81,22 @@ instructions.
    fingerprint and alertname. When its `since` is later than the starts_at
    above, the alert fired again: investigate the new firing and report its
    start time.
-2. Investigate with an alert-analysis skill if one is available to you;
-   otherwise with your own knowledge. Query evidence with the gq tools: the
-   `datasource` line of `get_alert` names the tool that runs the rule's query.
-   Use your other tools for the cluster and code (e.g. Kubernetes and GitHub).
-   You run in the background and cannot ask the user: record missing access in
-   the report and go on with what you can see.
+2. Investigate with the `sre-analyze-alert` skill: its workflow, report format
+   and confidence rubric. When that skill is not available, say so at the start
+   of your report ("sre-analyze-alert skill is missing") and go on with your own
+   knowledge. `get_alert` carries no credentials: query Grafana through the gq
+   tools wherever the skill asks for a Grafana URL or token (the alert's
+   instance is the gq `instance`; the `datasource` line of `get_alert` names the
+   gq tool that runs the rule's query). Query the cluster and code through the
+   other tools in your session (e.g. Kubernetes MCP server, GitHub). You run in
+   the background and cannot ask the user: record missing access in the report
+   and go on with what you can see.
 3. Stay read-only: diagnose first, query metrics, logs, traces and cluster
    state, and leave every system as you found it. Show a proposed change
    instead of applying it.
 4. Look for existing work: open PRs in the affected repo, an open incident, a
    deploy or GitOps change near the alert start.
-5. Return your report with these lines on top:
+5. Return the sre-analyze-alert report with these lines on top:
    Group: <group name>
    Verdict: real | noise (flapping, threshold too tight, symptom another component owns)
    Root cause: <one sentence>
