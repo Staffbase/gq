@@ -231,14 +231,19 @@ func (c *Client) doOnce(method, endpoint string, body io.Reader, contentType, to
 // {url} is substituted here rather than at config load, so it works the same
 // whether the command came from a single-instance config, a per-instance
 // override, or a registry-level default — one rule to document, one to test.
+//
+// The command's stderr goes to gq's own stderr (the terminal for the CLI, the
+// client's log for `gq mcp`), never into the error: an auth helper may print
+// secrets, and in MCP mode errors reach the agent and its model provider.
 func (c *Client) runTokenCommand() (string, error) {
 	command := strings.ReplaceAll(c.TokenCommand, "{url}", c.BaseURL)
 	cmd := exec.Command("sh", "-c", command) //nolint:gosec // user-supplied config
+	cmd.Stderr = os.Stderr
 	out, err := cmd.Output()
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			return "", fmt.Errorf("token_command exited %d: %s", exitErr.ExitCode(), strings.TrimSpace(string(exitErr.Stderr)))
+			return "", fmt.Errorf("token_command exited %d (its output went to gq's stderr)", exitErr.ExitCode())
 		}
 		return "", err
 	}

@@ -82,7 +82,7 @@ A long-running MCP server outlives most tokens. Rather than fail every call afte
 { "token_command": "vault read -field=token secret/grafana" }
 ```
 
-On a `401`, `gq` runs the command via `sh -c`, takes its trimmed stdout as the new token, and retries the request once. If the retry also fails, the error surfaces normally — the command runs once per failure, never in a loop. A non-zero exit or empty output is reported with the command's stderr, so a broken auth helper says so rather than looking like a Grafana outage.
+On a `401`, `gq` runs the command via `sh -c`, takes its trimmed stdout as the new token, and retries the request once. If the retry also fails, the error surfaces normally — the command runs once per failure, never in a loop. A non-zero exit or empty output is reported as an error, so a broken auth helper says so rather than looking like a Grafana outage. The command's stderr goes to `gq`'s own stderr (your terminal, or the MCP client's log), never into the error message: an auth helper may print secrets, and MCP errors reach the agent.
 
 Concurrent calls that all hit an expired token refresh once between them, not once each.
 
