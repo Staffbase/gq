@@ -186,3 +186,17 @@ func TestCompactAlerts_EmptyIsAnEmptyList(t *testing.T) {
 		t.Errorf("got %s", out)
 	}
 }
+
+func TestFormatAlert_OneLineFenceMarkerIsFenced(t *testing.T) {
+	for desc, fenced := range map[string]string{
+		"```go":     "````\n```go\n````\n",
+		"~~~ shell": "```\n~~~ shell\n```\n",
+	} {
+		d := detailFixture()
+		d.Alert.Annotations["description"] = desc
+		got := formatAlert(d, "prod")
+		if !strings.Contains(got, "\n## Description\n\n"+fenced) {
+			t.Errorf("description %q should be fenced:\n%s", desc, got)
+		}
+	}
+}

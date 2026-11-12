@@ -287,11 +287,14 @@ func stripComments(q string) string {
 	return strings.TrimSpace(strings.Join(keep, ""))
 }
 
-// block renders a value on one line, or fenced when it spans several, so it
-// cannot start Markdown of its own.
+// block renders a value on one line, or fenced when it spans several or starts
+// with a fence marker, so it cannot start Markdown of its own.
 func block(v string) string {
-	if strings.Contains(strings.TrimSpace(v), "\n") {
-		return "\n" + fence(strings.TrimSpace(v))
+	v = strings.TrimSpace(v)
+	// A line starting with a fence marker would open a code block that
+	// swallows the sections after it.
+	if strings.Contains(v, "\n") || strings.HasPrefix(v, "```") || strings.HasPrefix(v, "~~~") {
+		return "\n" + fence(v)
 	}
 	return oneLine(v) + "\n"
 }
