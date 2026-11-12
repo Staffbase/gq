@@ -68,7 +68,7 @@ func TestListAlerts_RejectedMatcherIsAnError(t *testing.T) {
 
 func TestListAlerts_UnknownStateIsAnError(t *testing.T) {
 	c, reqs := alertsServer(t, map[string]string{alertsPath: alertsFixture})
-	if _, err := c.ListAlerts(AlertFilter{State: "firing"}); err == nil || !strings.Contains(err.Error(), "unknown state") {
+	if _, err := c.ListAlerts(AlertFilter{State: AlertState("firing")}); err == nil || !strings.Contains(err.Error(), "unknown state") {
 		t.Fatalf("want an unknown-state error, got %v", err)
 	}
 	if len(*reqs) != 0 {
@@ -103,7 +103,7 @@ func TestListAlerts_GrafanaFiltersByMatchersAndState(t *testing.T) {
 		t.Run("state="+tt.state, func(t *testing.T) {
 			c, reqs := alertsServer(t, map[string]string{alertsPath: alertsFixture})
 			matchers := []string{`namespace="shop"`, `severity=~"critical|warning"`}
-			if _, err := c.ListAlerts(AlertFilter{Matchers: matchers, State: tt.state}); err != nil {
+			if _, err := c.ListAlerts(AlertFilter{Matchers: matchers, State: AlertState(tt.state)}); err != nil {
 				t.Fatal(err)
 			}
 			if len(*reqs) != 1 {
@@ -152,8 +152,8 @@ func TestGetAlert_NarrowsByAlertnameAndLoadsItsRule(t *testing.T) {
 		d.Rule.Group != "shop-rules" || d.Rule.Folder != "Shop" || !strings.Contains(d.Rule.Query, "rate(errors_total") {
 		t.Errorf("unexpected detail: %+v rule %+v", d.Alert, d.Rule)
 	}
-	if d.QueryTool != "query_metrics" {
-		t.Errorf("QueryTool = %q, want query_metrics", d.QueryTool)
+	if d.DatasourceKind != KindMetrics {
+		t.Errorf("DatasourceKind = %q, want metrics", d.DatasourceKind)
 	}
 	if d.BaseURL != c.BaseURL {
 		t.Errorf("BaseURL = %q", d.BaseURL)
@@ -161,11 +161,11 @@ func TestGetAlert_NarrowsByAlertnameAndLoadsItsRule(t *testing.T) {
 }
 
 func TestGetAlert_DatasourceMapsToItsTool(t *testing.T) {
-	for uids, want := range map[string]string{
-		`"vm"`: "query_metrics", `"vl"`: "query_logs",
-		`"victoriatraces"`: "query_traces", `"pyroscope"`: "query_profile",
+	for uids, want := range map[string]DatasourceKind{
+		`"vm"`: KindMetrics, `"vl"`: KindLogs,
+		`"victoriatraces"`: KindTraces, `"pyroscope"`: KindProfiles,
 		`"other"`: "", `"vm","vl"`: "", // several datasources: no single tool
-		`"vm","vm"`: "query_metrics", // Grafana lists one UID per query
+		`"vm","vm"`: KindMetrics, // Grafana lists one UID per query
 	} {
 		rules := strings.Replace(rulesFixture, `["vm"]`, "["+uids+"]", 1)
 		c, _ := alertsServer(t, map[string]string{alertsPath: ruleAlertFixture, rulesPath: rules})
@@ -174,8 +174,8 @@ func TestGetAlert_DatasourceMapsToItsTool(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if d.QueryTool != want {
-			t.Errorf("datasources %s: QueryTool = %q, want %q", uids, d.QueryTool, want)
+		if d.DatasourceKind != want {
+			t.Errorf("datasources %s: DatasourceKind = %q, want %q", uids, d.DatasourceKind, want)
 		}
 	}
 }

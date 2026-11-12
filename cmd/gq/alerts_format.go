@@ -12,7 +12,7 @@
 // limitations under the License.
 // SPDX-License-Identifier: Apache-2.0
 
-package grafana
+package main
 
 import (
 	"cmp"
@@ -24,6 +24,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Staffbase/gq/internal/grafana"
 )
 
 // Both formats are read by agents: they keep what an investigation needs and
@@ -34,13 +36,13 @@ import (
 // ("" in single-instance mode).
 type InstanceAlert struct {
 	Instance string
-	Alert
+	grafana.Alert
 }
 
 // AlertList is the list_alerts result. Labels every listed alert shares are in
 // CommonLabels once instead of on each alert.
 type AlertList struct {
-	CommonLabels map[string]string `json:"common_labels,omitempty"`
+	CommonLabels map[string]string `json:"commonLabels,omitempty"`
 	Alerts       []AlertSummary    `json:"alerts"`
 	// Errors maps the instances that could not be queried to the reason.
 	Errors map[string]string `json:"errors,omitempty"`
@@ -53,7 +55,7 @@ type AlertSummary struct {
 	Instance    string            `json:"instance,omitempty"`
 	Fingerprint string            `json:"fingerprint"`
 	State       string            `json:"state"`
-	StartsAt    string            `json:"starts_at"`
+	StartsAt    string            `json:"startsAt"`
 	Summary     string            `json:"summary,omitempty"`
 	Labels      map[string]string `json:"labels,omitempty"`
 }
@@ -120,7 +122,7 @@ func severityRank(s string) int {
 // Labels and annotations shown elsewhere in FormatAlert, or Grafana internals
 // that tell an investigation nothing.
 var (
-	headerLabels      = []string{"alertname", "severity", ruleUIDLabel, "grafana_folder"}
+	headerLabels      = []string{"alertname", "severity", grafana.RuleUIDLabel, "grafana_folder"}
 	hiddenAnnotations = []string{
 		"summary", "description", "runbook_url", "__values__", "__value_string__", "__orgId__",
 		"__alert_rule_namespace_uid__", "__dashboardUid__", "__panelId__",
@@ -130,7 +132,7 @@ var (
 // FormatAlert renders an alert as compact Markdown for an agent: the header
 // (what, where, since when, current values, labels) first, then description,
 // rule with its query, and links. instance is "" in single-instance mode.
-func FormatAlert(d *AlertDetail, instance string) string {
+func FormatAlert(d *grafana.AlertDetail, instance string) string {
 	a := d.Alert
 	var b strings.Builder
 	item := func(k, v string) {
@@ -194,8 +196,8 @@ func FormatAlert(d *AlertDetail, instance string) string {
 			labeled("health", oneLine(r.Health)), labeled("last eval", formatTime(r.LastEvaluation))), " · "))
 		item("last error", oneLine(r.LastError))
 		ds := oneLineJoin(r.DatasourceUIDs)
-		if d.QueryTool != "" {
-			ds += " → " + d.QueryTool
+		if tool := queryTools[d.DatasourceKind]; tool != "" {
+			ds += " (" + string(d.DatasourceKind) + ") → " + tool
 		}
 		item("datasource", ds)
 		item("link", ruleLink)
@@ -220,6 +222,14 @@ func FormatAlert(d *AlertDetail, instance string) string {
 	}
 	item("silence", silenceURL(d.BaseURL, a.Labels))
 	return b.String()
+}
+
+// queryTools names the gq tool that queries each kind of datasource.
+var queryTools = map[grafana.DatasourceKind]string{
+	grafana.KindMetrics:  "query_metrics",
+	grafana.KindLogs:     "query_logs",
+	grafana.KindTraces:   "query_traces",
+	grafana.KindProfiles: "query_profile",
 }
 
 // silenceURL opens Grafana's "new silence" form prefilled with all labels.

@@ -18,7 +18,6 @@ import (
 	"cmp"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"slices"
@@ -35,9 +34,27 @@ type AlertFilter struct {
 	// Matchers are Alertmanager label matchers that must all match, e.g.
 	// namespace="shop" or severity=~"critical|high".
 	Matchers []string
-	// State is "active" (the default when empty), "suppressed" (silenced or
-	// inhibited), "unprocessed" or "all".
-	State string
+	// State is the alert state to select; empty means StateActive.
+	State AlertState
+}
+
+// AlertState selects alerts by state.
+type AlertState string
+
+// The alert states; StateSuppressed covers silenced and inhibited alerts.
+const (
+	StateActive      AlertState = "active"
+	StateSuppressed  AlertState = "suppressed"
+	StateUnprocessed AlertState = "unprocessed"
+	StateAll         AlertState = "all"
+)
+
+// AlertStates lists every AlertState, StateActive (the default) first.
+var AlertStates = []AlertState{StateActive, StateSuppressed, StateUnprocessed, StateAll}
+
+// Receiver is a notification receiver an alert was routed to.
+type Receiver struct {
+	Name string `json:"name"`
 }
 
 // Alert is one Grafana Alerting alert as the Alertmanager API returns it.
@@ -48,13 +65,11 @@ type Alert struct {
 		SilencedBy  []string `json:"silencedBy"`
 		InhibitedBy []string `json:"inhibitedBy"`
 	} `json:"status"`
-	StartsAt     time.Time `json:"startsAt"`
-	GeneratorURL string    `json:"generatorURL"`
-	Receivers    []struct {
-		Name string `json:"name"`
-	} `json:"receivers"`
-	Labels      map[string]string `json:"labels"`
-	Annotations map[string]string `json:"annotations"`
+	StartsAt     time.Time         `json:"startsAt"`
+	GeneratorURL string            `json:"generatorURL"`
+	Receivers    []Receiver        `json:"receivers"`
+	Labels       map[string]string `json:"labels"`
+	Annotations  map[string]string `json:"annotations"`
 }
 
 // Validate reports a state the API has no flags for, so callers asking several
@@ -81,8 +96,20 @@ func (c *Client) ListAlerts(f AlertFilter) ([]Alert, error) {
 // rulesPath is Grafana's Prometheus-style rules API; it can select rules by UID.
 const rulesPath = "/api/prometheus/grafana/api/v1/rules"
 
-// ruleUIDLabel is the label Grafana puts the alert rule's UID in.
-const ruleUIDLabel = "__alert_rule_uid__"
+// RuleUIDLabel is the label Grafana puts the alert rule's UID in.
+const RuleUIDLabel = "__alert_rule_uid__"
+
+// DatasourceKind is which of the client's configured datasources a rule's
+// query reads.
+type DatasourceKind string
+
+// The datasource kinds gq has query tools for.
+const (
+	KindMetrics  DatasourceKind = "metrics"
+	KindLogs     DatasourceKind = "logs"
+	KindTraces   DatasourceKind = "traces"
+	KindProfiles DatasourceKind = "profiles"
+)
 
 // AlertRule is the Grafana alert rule behind an alert.
 type AlertRule struct {
@@ -106,15 +133,15 @@ type AlertDetail struct {
 	RuleErr string
 	// BaseURL is the Grafana URL, for links.
 	BaseURL string
-	// QueryTool is the gq tool that runs the rule's query (e.g.
-	// "query_metrics"), or "" when its datasource is not one gq knows.
-	QueryTool string
+	// DatasourceKind is the configured datasource the rule's query reads, or
+	// "" when it reads several or one the client does not know.
+	DatasourceKind DatasourceKind
 }
 
 // GetAlert returns the alert with the fingerprint and its rule. A non-empty
 // alertname lets Grafana narrow the fetch; every state is searched.
 func (c *Client) GetAlert(fingerprint, alertname string) (*AlertDetail, error) {
-	f := AlertFilter{State: "all"}
+	f := AlertFilter{State: StateAll}
 	if alertname != "" {
 		f.Matchers = []string{"alertname=" + strconv.Quote(alertname)}
 	}
@@ -127,13 +154,13 @@ func (c *Client) GetAlert(fingerprint, alertname string) (*AlertDetail, error) {
 		return nil, fmt.Errorf("alert %s is not firing (resolved, or wrong instance, fingerprint or alertname)", fingerprint)
 	}
 	d := &AlertDetail{Alert: alerts[i], BaseURL: c.BaseURL}
-	if uid := d.Alert.Labels[ruleUIDLabel]; uid != "" {
+	if uid := d.Alert.Labels[RuleUIDLabel]; uid != "" {
 		// Best-effort: a missing rule must not hide the alert.
 		if r, err := c.alertRule(uid); err != nil {
 			d.RuleErr = err.Error()
 		} else {
 			d.Rule = r
-			d.QueryTool = c.queryTool(r.DatasourceUIDs)
+			d.DatasourceKind = c.datasourceKind(r.DatasourceUIDs)
 		}
 	}
 	return d, nil
@@ -186,21 +213,21 @@ func queryString(raw json.RawMessage) string {
 	return string(raw)
 }
 
-// queryTool names the gq tool for a rule reading exactly one datasource that
-// this client is configured for.
-func (c *Client) queryTool(uids []string) string {
+// datasourceKind tells which configured datasource a rule reading exactly one
+// datasource uses.
+func (c *Client) datasourceKind(uids []string) DatasourceKind {
 	if len(uids) != 1 {
 		return ""
 	}
 	switch uids[0] {
 	case c.MetricsDatasourceUID:
-		return "query_metrics"
+		return KindMetrics
 	case c.LogsDatasourceUID:
-		return "query_logs"
+		return KindLogs
 	case cmp.Or(c.TracesDatasourceUID, DefaultTracesDatasourceUID):
-		return "query_traces"
+		return KindTraces
 	case cmp.Or(c.ProfilesDatasourceUID, DefaultProfilesDatasourceUID):
-		return "query_profile"
+		return KindProfiles
 	}
 	return ""
 }
@@ -210,16 +237,16 @@ func (c *Client) queryTool(uids []string) string {
 func alertQuery(f AlertFilter) (url.Values, error) {
 	on := map[string]bool{}
 	switch f.State {
-	case "", "active":
+	case "", StateActive:
 		on["active"] = true
-	case "suppressed":
+	case StateSuppressed:
 		on["silenced"], on["inhibited"] = true, true
-	case "unprocessed":
+	case StateUnprocessed:
 		on["unprocessed"] = true
-	case "all":
+	case StateAll:
 		on["active"], on["silenced"], on["inhibited"], on["unprocessed"] = true, true, true, true
 	default:
-		return nil, fmt.Errorf("unknown state %q (want active, suppressed, unprocessed or all)", f.State)
+		return nil, fmt.Errorf("unknown state %q (want one of %v)", f.State, AlertStates)
 	}
 	q := url.Values{}
 	for _, k := range []string{"active", "silenced", "inhibited", "unprocessed"} {
@@ -231,18 +258,13 @@ func alertQuery(f AlertFilter) (url.Values, error) {
 	return q, nil
 }
 
-// getJSON GETs a Grafana API path (with auth and token refresh) and decodes the
-// 200 response into dst.
+// getJSON GETs a Grafana API path and decodes the 200 response into dst.
 func (c *Client) getJSON(path string, dst any) error {
-	resp, err := c.do(http.MethodGet, c.BaseURL+path, nil, "")
+	raw, err := c.call(http.MethodGet, c.BaseURL+path, nil, "")
 	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+		return err
 	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, readBody(io.LimitReader(resp.Body, 500)))
-	}
-	if err := json.NewDecoder(resp.Body).Decode(dst); err != nil {
+	if err := json.Unmarshal(raw, dst); err != nil {
 		return fmt.Errorf("decoding response: %w", err)
 	}
 	return nil

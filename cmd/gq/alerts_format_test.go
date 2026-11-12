@@ -12,24 +12,24 @@
 // limitations under the License.
 // SPDX-License-Identifier: Apache-2.0
 
-package grafana
+package main
 
 import (
 	"encoding/json"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Staffbase/gq/internal/grafana"
 )
 
-func detailFixture() *AlertDetail {
-	var a Alert
+func detailFixture() *grafana.AlertDetail {
+	var a grafana.Alert
 	a.Fingerprint = "ccc"
 	a.Status.State = "active"
 	a.StartsAt = time.Date(2026, 1, 2, 10, 0, 0, 0, time.UTC)
 	a.GeneratorURL = "https://grafana.example.com/alerting/grafana/rule-1/view?orgId=1"
-	a.Receivers = []struct {
-		Name string `json:"name"`
-	}{{Name: "team-shop"}}
+	a.Receivers = []grafana.Receiver{{Name: "team-shop"}}
 	a.Labels = map[string]string{
 		"alertname": "HighErrorRate", "severity": "critical", "__alert_rule_uid__": "rule-1",
 		"grafana_folder": "Shop", "namespace": "shop", "service": "web",
@@ -46,15 +46,15 @@ func detailFixture() *AlertDetail {
 		"__panelId__":                  "4",
 		"owner":                        "shop-team",
 	}
-	return &AlertDetail{
+	return &grafana.AlertDetail{
 		Alert:   a,
 		BaseURL: "https://grafana.example.com",
-		Rule: &AlertRule{
+		Rule: &grafana.AlertRule{
 			UID: "rule-1", Name: "HighErrorRate", Group: "shop-rules", Folder: "Shop", Health: "ok",
 			Query: "# errors per second\nrate(errors_total[5m]) > 1", DatasourceUIDs: []string{"vm"},
 			LastEvaluation: time.Date(2026, 1, 2, 10, 5, 0, 0, time.UTC),
 		},
-		QueryTool: "query_metrics",
+		DatasourceKind: grafana.KindMetrics,
 	}
 }
 
@@ -72,7 +72,7 @@ func TestFormatAlert_HeaderFirstWithoutNoise(t *testing.T) {
 		"\n## Other annotations\n\n- owner: shop-team\n" +
 		"\n## Rule\n\n" +
 		"- HighErrorRate (uid rule-1) · folder: Shop · group: shop-rules · health: ok · last eval: 2026-01-02T10:05:00Z\n" +
-		"- datasource: vm → query_metrics\n" +
+		"- datasource: vm (metrics) → query_metrics\n" +
 		"- link: https://grafana.example.com/alerting/grafana/rule-1/view\n" +
 		"\n```\nrate(errors_total[5m]) > 1\n```\n" +
 		"\n## Links\n\n" +
@@ -91,7 +91,7 @@ func TestFormatAlert_OptionalParts(t *testing.T) {
 	d.Alert.Status.SilencedBy = []string{"s1", "s2"}
 	d.Alert.Status.InhibitedBy = []string{"i1"}
 	d.Alert.Annotations = map[string]string{"description": "one line"}
-	d.Rule, d.RuleErr, d.QueryTool = nil, "HTTP 403: forbidden", ""
+	d.Rule, d.RuleErr, d.DatasourceKind = nil, "HTTP 403: forbidden", ""
 
 	got := FormatAlert(d, "")
 	for _, want := range []string{
@@ -127,7 +127,7 @@ func TestFormatAlert_ValuesCannotStartNewMarkdown(t *testing.T) {
 }
 
 func instanceAlert(instance, fp, severity, startsAt string, labels map[string]string) InstanceAlert {
-	var a Alert
+	var a grafana.Alert
 	a.Fingerprint = fp
 	a.Status.State = "active"
 	a.StartsAt, _ = time.Parse(time.RFC3339, startsAt)
@@ -149,10 +149,10 @@ func TestCompactAlerts_SharedLabelsOnceSortedBySeverityThenNewest(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `{"common_labels":{"alertname":"X"},"alerts":[` +
-		`{"instance":"prod","fingerprint":"a2","state":"active","starts_at":"2026-01-02T08:00:00Z","summary":"s-a2","labels":{"job":"api","severity":"critical"}},` +
-		`{"instance":"prod","fingerprint":"a3","state":"active","starts_at":"2026-01-02T11:00:00Z","summary":"s-a3","labels":{"job":"db","severity":"warning"}},` +
-		`{"instance":"dev","fingerprint":"a1","state":"active","starts_at":"2026-01-02T10:00:00Z","summary":"s-a1","labels":{"job":"web","severity":"warning"}}],` +
+	want := `{"commonLabels":{"alertname":"X"},"alerts":[` +
+		`{"instance":"prod","fingerprint":"a2","state":"active","startsAt":"2026-01-02T08:00:00Z","summary":"s-a2","labels":{"job":"api","severity":"critical"}},` +
+		`{"instance":"prod","fingerprint":"a3","state":"active","startsAt":"2026-01-02T11:00:00Z","summary":"s-a3","labels":{"job":"db","severity":"warning"}},` +
+		`{"instance":"dev","fingerprint":"a1","state":"active","startsAt":"2026-01-02T10:00:00Z","summary":"s-a1","labels":{"job":"web","severity":"warning"}}],` +
 		`"errors":{"stage":"HTTP 403: forbidden"}}`
 	if string(out) != want {
 		t.Errorf("got  %s\nwant %s", out, want)
@@ -162,7 +162,7 @@ func TestCompactAlerts_SharedLabelsOnceSortedBySeverityThenNewest(t *testing.T) 
 func TestCompactAlerts_SingleAlertKeepsItsLabels(t *testing.T) {
 	alerts := []InstanceAlert{instanceAlert("", "a1", "warning", "2026-01-02T10:00:00Z", map[string]string{"alertname": "X"})}
 	out, _ := json.Marshal(CompactAlerts(alerts, nil, 100))
-	want := `{"alerts":[{"fingerprint":"a1","state":"active","starts_at":"2026-01-02T10:00:00Z","summary":"s-a1","labels":{"alertname":"X","severity":"warning"}}]}`
+	want := `{"alerts":[{"fingerprint":"a1","state":"active","startsAt":"2026-01-02T10:00:00Z","summary":"s-a1","labels":{"alertname":"X","severity":"warning"}}]}`
 	if string(out) != want {
 		t.Errorf("got  %s\nwant %s", out, want)
 	}

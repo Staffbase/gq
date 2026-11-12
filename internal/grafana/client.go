@@ -248,7 +248,13 @@ func (c *Client) runTokenCommand() (string, error) {
 // proxy calls path on the datasource uid through Grafana's datasource proxy and
 // returns the body of a 200 response.
 func (c *Client) proxy(uid, method, path string, body io.Reader, contentType string) ([]byte, error) {
-	resp, err := c.do(method, c.BaseURL+"/api/datasources/proxy/uid/"+uid+"/"+path, body, contentType)
+	return c.call(method, c.BaseURL+"/api/datasources/proxy/uid/"+uid+"/"+path, body, contentType)
+}
+
+// call sends a request (with auth and token refresh) and returns the body of a
+// 200 response; any other status is an error carrying the response body.
+func (c *Client) call(method, endpoint string, body io.Reader, contentType string) ([]byte, error) {
+	resp, err := c.do(method, endpoint, body, contentType)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}

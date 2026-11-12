@@ -85,7 +85,7 @@ func TestListAlertsTool_AllInstancesAtOnce(t *testing.T) {
 	if r.IsError {
 		t.Fatalf("one failing instance must not fail the call: %s", resultText(r))
 	}
-	var list grafana.AlertList
+	var list AlertList
 	if err := json.Unmarshal([]byte(resultText(r)), &list); err != nil {
 		t.Fatalf("want JSON, got %q: %v", resultText(r), err)
 	}
@@ -115,7 +115,7 @@ func TestListAlertsTool_OneInstance(t *testing.T) {
 	if r.IsError || !strings.Contains(resultText(r), `"d1"`) {
 		t.Fatalf("want dev's alert, got %s", resultText(r))
 	}
-	if prod.capturedFilter.State != "" || len(prod.capturedFilter.Matchers) != 0 || prod.listCalls != 0 {
+	if prod.capturedFilter.State != "" || len(prod.capturedFilter.Matchers) != 0 || prod.alertListCalls != 0 {
 		t.Error("prod must not be queried when instance is dev")
 	}
 }
@@ -140,7 +140,7 @@ func TestListAlertsTool_BadStateFailsBeforeAskingAnyone(t *testing.T) {
 	if !r.IsError || !strings.Contains(resultText(r), "unknown state") {
 		t.Fatalf("want an unknown-state tool error, got %s", resultText(r))
 	}
-	if dev.listCalls != 0 {
+	if dev.alertListCalls != 0 {
 		t.Error("no instance should be asked with a bad state")
 	}
 }
