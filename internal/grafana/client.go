@@ -48,6 +48,8 @@ type Querier interface {
 	ProfileTypes(start, end string) ([]ProfileType, error)
 	ProfileLabelValues(label, start, end string) ([]string, error)
 	SelectProfile(profileTypeID, selector, start, end string, top int) (*ProfileSummary, error)
+	ListAlerts(f AlertFilter) ([]Alert, error)
+	GetAlert(fingerprint, alertname string) (*AlertDetail, error)
 }
 
 // Client holds connection config for the Grafana proxy.

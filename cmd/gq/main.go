@@ -63,6 +63,8 @@ func buildRootCmd() *cobra.Command {
 		buildProfileCmd(),
 		buildProfileTypesCmd(),
 		buildProfileLabelsCmd(),
+		buildAlertsCmd(),
+		buildAlertCmd(),
 		buildMCPCmd(),
 		buildVersionCmd(),
 	)

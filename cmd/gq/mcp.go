@@ -42,7 +42,7 @@ func buildMCPCmd() *cobra.Command {
 type clientFunc func(args map[string]any) (grafana.Querier, error)
 
 func runMCP(_ *cobra.Command, _ []string) error {
-	s := server.NewMCPServer("gq", version, server.WithToolCapabilities(false))
+	s := server.NewMCPServer("gq", version, server.WithToolCapabilities(false), server.WithInstructions(mcpInstructions))
 
 	reg, err := registryFromEnv()
 	if err != nil {
@@ -50,13 +50,15 @@ func runMCP(_ *cobra.Command, _ []string) error {
 	}
 
 	if reg != nil {
-		// Registry mode: instance param required on every tool.
+		// Registry mode: instance param required on every query tool; the
+		// alert tools ask every instance when it is omitted.
 		cache := newClientCache(reg)
 		registerTools(s, cache.querierFor,
 			mcp.WithString("instance", mcp.Required(),
 				mcp.Description("Grafana instance name. Available: "+strings.Join(reg.InstanceNames(), ", ")),
 			),
 		)
+		registerAlertTools(s, alertSource{names: reg.InstanceNames(), get: cache.querier})
 		return server.ServeStdio(s)
 	}
 
@@ -68,6 +70,7 @@ func runMCP(_ *cobra.Command, _ []string) error {
 	registerTools(s,
 		func(_ map[string]any) (grafana.Querier, error) { return client, nil },
 	)
+	registerAlertTools(s, alertSource{get: func(string) (grafana.Querier, error) { return client, nil }})
 	return server.ServeStdio(s)
 }
 
@@ -103,6 +106,11 @@ func newClientCache(reg *grafana.Registry) *clientCache {
 // querierFor resolves the "instance" tool argument to a cached client.
 func (cc *clientCache) querierFor(args map[string]any) (grafana.Querier, error) {
 	instance, _ := args["instance"].(string)
+	return cc.querier(instance)
+}
+
+// querier returns the cached client of the named instance.
+func (cc *clientCache) querier(instance string) (grafana.Querier, error) {
 	if instance == "" {
 		return nil, fmt.Errorf("instance is required (available: %s)", strings.Join(cc.reg.InstanceNames(), ", "))
 	}
