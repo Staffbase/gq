@@ -165,7 +165,7 @@ func TestGetAlert_DatasourceMapsToItsKind(t *testing.T) {
 		`"vm"`: KindMetrics, `"vl"`: KindLogs,
 		`"victoriatraces"`: KindTraces, `"pyroscope"`: KindProfiles,
 		`"other"`: "", `"vm","vl"`: "", // several datasources: no single kind
-		`"vm","vm"`: KindMetrics, // Grafana lists one UID per query
+		`"vm","vm"`: "", // two queries on one datasource: Grafana joins them into one string, not valid PromQL
 	} {
 		rules := strings.Replace(rulesFixture, `["vm"]`, "["+uids+"]", 1)
 		c, _ := alertsServer(t, map[string]string{alertsPath: ruleAlertFixture, rulesPath: rules})

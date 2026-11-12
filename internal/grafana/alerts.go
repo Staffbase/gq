@@ -204,8 +204,8 @@ func (c *Client) alertRule(uid string) (*AlertRule, error) {
 			if r.UID == uid {
 				return &AlertRule{
 					UID: r.UID, Name: r.Name, Group: g.Name, Folder: g.File, Query: queryString(r.Query),
-					// one UID per query: a rule with two queries on one datasource lists it twice
-					DatasourceUIDs: slices.Compact(slices.Sorted(slices.Values(r.DatasourceUIDs))), Health: r.Health, LastError: r.LastError, LastEvaluation: r.LastEvaluation,
+					// one UID per query, duplicates kept: datasourceKind needs the query count
+					DatasourceUIDs: r.DatasourceUIDs, Health: r.Health, LastError: r.LastError, LastEvaluation: r.LastEvaluation,
 				}, nil
 			}
 		}
@@ -223,8 +223,9 @@ func queryString(raw json.RawMessage) string {
 	return string(raw)
 }
 
-// datasourceKind tells which configured datasource a rule reading exactly one
-// datasource uses.
+// datasourceKind tells which configured datasource a rule with exactly one
+// query reads. Grafana lists one UID per query and joins several queries into
+// one string (A | B), which no query tool can run.
 func (c *Client) datasourceKind(uids []string) DatasourceKind {
 	if len(uids) != 1 {
 		return ""
