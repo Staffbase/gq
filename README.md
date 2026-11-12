@@ -152,6 +152,14 @@ The list is compact JSON for agents: labels every listed alert shares appear onc
 
 The token needs read access to alerts and alert rules (`alert.instances:read`, `alert.rules:read`); Grafana's Viewer role has both.
 
+### Agent skill: alert triage
+
+[`skills/alert-triage`](skills/alert-triage/SKILL.md) is a skill for coding agents that triages firing alerts with these tools: it turns a request like "triage the alerts of team payments" into `list_alerts` filters, groups alerts that likely share a cause, investigates each group in its own subagent with the gq query tools, and reports root causes with proposed fixes. For Claude Code, link it into your skills:
+
+```sh
+ln -s "$PWD/skills/alert-triage" ~/.claude/skills/alert-triage
+```
+
 ## MCP Server
 
 `gq` can run as an [MCP](https://modelcontextprotocol.io) server over stdio, exposing these tools to AI agents:
