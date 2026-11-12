@@ -32,26 +32,26 @@ import (
 // drop what costs tokens without telling anything (Grafana internals, values
 // shown twice, links an agent cannot use).
 
-// InstanceAlert is an alert with the name of the Grafana instance it came from
+// instanceAlert is an alert with the name of the Grafana instance it came from
 // ("" in single-instance mode).
-type InstanceAlert struct {
+type instanceAlert struct {
 	Instance string
 	grafana.Alert
 }
 
-// AlertList is the list_alerts result. Labels every listed alert shares are in
+// alertList is the list_alerts result. Labels every listed alert shares are in
 // CommonLabels once instead of on each alert.
-type AlertList struct {
+type alertList struct {
 	CommonLabels map[string]string `json:"commonLabels,omitempty"`
-	Alerts       []AlertSummary    `json:"alerts"`
+	Alerts       []alertSummary    `json:"alerts"`
 	// Errors maps the instances that could not be queried to the reason.
 	Errors map[string]string `json:"errors,omitempty"`
 	// More counts the alerts left out by the limit.
 	More int `json:"more,omitempty"`
 }
 
-// AlertSummary is one alert of an AlertList.
-type AlertSummary struct {
+// alertSummary is one alert of an alertList.
+type alertSummary struct {
 	Instance    string            `json:"instance,omitempty"`
 	Fingerprint string            `json:"fingerprint"`
 	State       string            `json:"state"`
@@ -60,11 +60,11 @@ type AlertSummary struct {
 	Labels      map[string]string `json:"labels,omitempty"`
 }
 
-// CompactAlerts sorts the alerts (most severe, then newest first), keeps the
+// compactAlerts sorts the alerts (most severe, then newest first), keeps the
 // first limit of them, and moves the labels they all share to CommonLabels.
-func CompactAlerts(alerts []InstanceAlert, errs map[string]string, limit int) AlertList {
+func compactAlerts(alerts []instanceAlert, errs map[string]string, limit int) alertList {
 	alerts = slices.Clone(alerts)
-	slices.SortStableFunc(alerts, func(a, b InstanceAlert) int {
+	slices.SortStableFunc(alerts, func(a, b instanceAlert) int {
 		if c := severityRank(a.Labels["severity"]) - severityRank(b.Labels["severity"]); c != 0 {
 			return c
 		}
@@ -73,7 +73,7 @@ func CompactAlerts(alerts []InstanceAlert, errs map[string]string, limit int) Al
 		}
 		return strings.Compare(a.Instance+"/"+a.Fingerprint, b.Instance+"/"+b.Fingerprint)
 	})
-	list := AlertList{Alerts: []AlertSummary{}}
+	list := alertList{Alerts: []alertSummary{}}
 	if len(errs) > 0 {
 		list.Errors = errs
 	}
@@ -96,7 +96,7 @@ func CompactAlerts(alerts []InstanceAlert, errs map[string]string, limit int) Al
 	for _, a := range alerts {
 		labels := maps.Clone(a.Labels)
 		maps.DeleteFunc(labels, func(k, _ string) bool { _, common := list.CommonLabels[k]; return common })
-		list.Alerts = append(list.Alerts, AlertSummary{
+		list.Alerts = append(list.Alerts, alertSummary{
 			Instance: a.Instance, Fingerprint: a.Fingerprint, State: a.Status.State,
 			StartsAt: formatTime(a.StartsAt), Summary: oneLine(a.Annotations["summary"]), Labels: labels,
 		})
@@ -119,7 +119,7 @@ func severityRank(s string) int {
 	return 4
 }
 
-// Labels and annotations shown elsewhere in FormatAlert, or Grafana internals
+// Labels and annotations shown elsewhere in formatAlert, or Grafana internals
 // that tell an investigation nothing.
 var (
 	headerLabels      = []string{"alertname", "severity", grafana.RuleUIDLabel, "grafana_folder"}
@@ -129,10 +129,10 @@ var (
 	}
 )
 
-// FormatAlert renders an alert as compact Markdown for an agent: the header
+// formatAlert renders an alert as compact Markdown for an agent: the header
 // (what, where, since when, current values, labels) first, then description,
 // rule with its query, and links. instance is "" in single-instance mode.
-func FormatAlert(d *grafana.AlertDetail, instance string) string {
+func formatAlert(d *grafana.AlertDetail, instance string) string {
 	a := d.Alert
 	var b strings.Builder
 	item := func(k, v string) {
@@ -226,10 +226,10 @@ func FormatAlert(d *grafana.AlertDetail, instance string) string {
 
 // queryTools names the gq tool that queries each kind of datasource.
 var queryTools = map[grafana.DatasourceKind]string{
-	grafana.KindMetrics:  "query_metrics",
-	grafana.KindLogs:     "query_logs",
-	grafana.KindTraces:   "query_traces",
-	grafana.KindProfiles: "query_profile",
+	grafana.KindMetrics:  toolQueryMetrics,
+	grafana.KindLogs:     toolQueryLogs,
+	grafana.KindTraces:   toolQueryTraces,
+	grafana.KindProfiles: toolQueryProfile,
 }
 
 // silenceURL opens Grafana's "new silence" form prefilled with all labels.

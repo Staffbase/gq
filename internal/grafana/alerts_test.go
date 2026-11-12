@@ -68,7 +68,7 @@ func TestListAlerts_RejectedMatcherIsAnError(t *testing.T) {
 
 func TestListAlerts_UnknownStateIsAnError(t *testing.T) {
 	c, reqs := alertsServer(t, map[string]string{alertsPath: alertsFixture})
-	if _, err := c.ListAlerts(AlertFilter{State: AlertState("firing")}); err == nil || !strings.Contains(err.Error(), "unknown state") {
+	if _, err := c.ListAlerts(AlertFilter{State: AlertState("firing")}); err == nil || !strings.Contains(err.Error(), `unknown state "firing" (want active, suppressed, unprocessed or all)`) {
 		t.Fatalf("want an unknown-state error, got %v", err)
 	}
 	if len(*reqs) != 0 {
@@ -160,11 +160,11 @@ func TestGetAlert_NarrowsByAlertnameAndLoadsItsRule(t *testing.T) {
 	}
 }
 
-func TestGetAlert_DatasourceMapsToItsTool(t *testing.T) {
+func TestGetAlert_DatasourceMapsToItsKind(t *testing.T) {
 	for uids, want := range map[string]DatasourceKind{
 		`"vm"`: KindMetrics, `"vl"`: KindLogs,
 		`"victoriatraces"`: KindTraces, `"pyroscope"`: KindProfiles,
-		`"other"`: "", `"vm","vl"`: "", // several datasources: no single tool
+		`"other"`: "", `"vm","vl"`: "", // several datasources: no single kind
 		`"vm","vm"`: KindMetrics, // Grafana lists one UID per query
 	} {
 		rules := strings.Replace(rulesFixture, `["vm"]`, "["+uids+"]", 1)
@@ -195,5 +195,19 @@ func TestGetAlert_UnknownFingerprint(t *testing.T) {
 	c, _ := alertsServer(t, map[string]string{alertsPath: ruleAlertFixture})
 	if _, err := c.GetAlert("zzz", ""); err == nil || !strings.Contains(err.Error(), "not firing") {
 		t.Fatalf("want a not-firing error, got %v", err)
+	}
+}
+
+func TestListAlerts_LongErrorPageIsCut(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "<html>"+strings.Repeat("x", 10000)+"</html>", http.StatusBadGateway)
+	}))
+	t.Cleanup(srv.Close)
+	_, err := (&Client{BaseURL: srv.URL}).ListAlerts(AlertFilter{})
+	if err == nil || !strings.Contains(err.Error(), "HTTP 502") {
+		t.Fatalf("want the 502, got %v", err)
+	}
+	if len(err.Error()) > 1100 {
+		t.Errorf("error should cut a long body, got %d bytes", len(err.Error()))
 	}
 }

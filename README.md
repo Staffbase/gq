@@ -1,6 +1,6 @@
 # gq
 
-`gq` is a CLI tool and MCP server for querying Grafana: logs, metrics, traces and profiles via Grafana's datasource proxy, and firing alerts from Grafana Alerting. It lets developers and AI agents search VictoriaLogs, VictoriaMetrics, VictoriaTraces and Pyroscope, and triage alerts across several Grafana instances, without direct cluster access or port-forwarding.
+`gq` is a CLI tool and MCP server for querying Grafana: logs, metrics, traces and profiles through Grafana's datasource proxy, and the alerts currently firing in Grafana Alerting. It lets developers and AI agents search VictoriaLogs, VictoriaMetrics, VictoriaTraces and Pyroscope, and triage alerts across several Grafana instances, without direct cluster access or port-forwarding.
 
 ## Install
 
@@ -146,7 +146,7 @@ gq version
 
 ## Alerts
 
-`gq alerts` and the `list_alerts` tool read firing alerts from Grafana Alerting (not from a standalone Prometheus Alertmanager). Grafana does the filtering: each `-m` / `matchers` entry is an Alertmanager label matcher (`=`, `!=`, `=~`, `!~`), all must match, and `--state` / `state` picks `active` (default), `suppressed` (silenced or inhibited), `unprocessed` or `all`. Filter by whatever labels your rules carry: alert name, namespace, team, cluster, severity. A matcher Grafana rejects is returned as its error. Without an instance, every instance of a multi-instance config is asked in parallel; instances that fail are listed under `errors` and the others still answer.
+`gq alerts` and the `list_alerts` tool query the alerts currently firing in Grafana Alerting (not in a standalone Prometheus Alertmanager). Grafana does the filtering: each `-m` / `matchers` entry is an Alertmanager label matcher (`=`, `!=`, `=~`, `!~`), all must match, and `--state` / `state` picks `active` (default), `suppressed` (silenced or inhibited), `unprocessed` or `all`. Filter by whatever labels your rules carry: alert name, namespace, team, cluster, severity. A matcher Grafana rejects is returned as its error. Without an instance, every instance of a multi-instance config is asked in parallel; instances that fail are listed under `errors` and the others still answer.
 
 The list is compact JSON for agents: labels every listed alert shares appear once under `commonLabels`, and `more` counts the alerts beyond the limit (default 100). `gq alert` / `get_alert` returns one alert as short Markdown: a header (instance, severity, state, start, summary, runbook, current values, labels), the description, the alert rule with its query and the gq tool that runs it, and dashboard and silence links. Grafana internals and values shown twice are left out.
 
@@ -154,7 +154,7 @@ The token needs read access to alerts and alert rules (`alert.instances:read`, `
 
 ### Agent skill: alert triage
 
-[`skills/alert-triage`](skills/alert-triage/SKILL.md) is a skill for coding agents that triages firing alerts with these tools: it turns a request like "triage the alerts of team payments" into `list_alerts` filters, groups alerts that likely share a cause, investigates each group in its own subagent with the gq query tools, and reports root causes with proposed fixes. For Claude Code, link it into your skills:
+[`skills/alert-triage`](skills/alert-triage/SKILL.md) is a skill for coding agents that triages the alerts firing in Grafana with these tools: it turns a request like "triage the alerts of team payments" into `list_alerts` filters, groups alerts that likely share a cause, investigates each group in its own subagent with the gq query tools, and reports root causes with proposed fixes. For Claude Code, link it into your skills:
 
 ```sh
 ln -s "$PWD/skills/alert-triage" ~/.claude/skills/alert-triage
@@ -175,7 +175,7 @@ ln -s "$PWD/skills/alert-triage" ~/.claude/skills/alert-triage
 | `query_profile_types` | List profile types available in Pyroscope (CPU, memory, ...) |
 | `query_profile_label_values` | List values of a profile label, e.g. `service_name` to find profiled services |
 | `query_profile` | Query merged profiles from Pyroscope. Returns the top functions by self cost with their share of the total |
-| `list_alerts` | List firing Grafana alerts, filtered by Grafana with label matchers and state; all instances at once unless `instance` is given. See [Alerts](#alerts) |
+| `list_alerts` | Query the alerts firing in Grafana, filtered by Grafana with label matchers and state; all instances at once unless `instance` is given. See [Alerts](#alerts) |
 | `get_alert` | One alert as short Markdown: header, description, rule query with the gq tool to run it, links |
 
 The trace and profile tools go through the Grafana datasource proxy with the same auth as the other tools. Traces use the Tempo-compatible API of VictoriaTraces (v0.9.4+); profiles use Pyroscope's query API. In `query_profile` results, `other` is Pyroscope's bucket for small nodes it pruned; a shorter time range prunes less.

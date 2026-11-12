@@ -22,6 +22,7 @@ import (
 	"net/url"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -51,6 +52,15 @@ const (
 
 // AlertStates lists every AlertState, StateActive (the default) first.
 var AlertStates = []AlertState{StateActive, StateSuppressed, StateUnprocessed, StateAll}
+
+// stateList is "active, suppressed, unprocessed or all", for error messages.
+func stateList() string {
+	names := make([]string, len(AlertStates))
+	for i, st := range AlertStates {
+		names[i] = string(st)
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " or " + names[len(names)-1]
+}
 
 // Receiver is a notification receiver an alert was routed to.
 type Receiver struct {
@@ -246,7 +256,7 @@ func alertQuery(f AlertFilter) (url.Values, error) {
 	case StateAll:
 		on["active"], on["silenced"], on["inhibited"], on["unprocessed"] = true, true, true, true
 	default:
-		return nil, fmt.Errorf("unknown state %q (want one of %v)", f.State, AlertStates)
+		return nil, fmt.Errorf("unknown state %q (want %s)", f.State, stateList())
 	}
 	q := url.Values{}
 	for _, k := range []string{"active", "silenced", "inhibited", "unprocessed"} {

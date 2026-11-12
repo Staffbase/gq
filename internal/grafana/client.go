@@ -35,6 +35,10 @@ import (
 // unreachable Grafana cannot hang the CLI or MCP server indefinitely.
 const defaultHTTPTimeout = 30 * time.Second
 
+// maxErrorBody caps how much of an error response ends up in an error: enough
+// for a datasource's message, not a whole HTML error page in an agent's context.
+const maxErrorBody = 1024
+
 // Querier is the interface implemented by Client.
 // Both the gq CLI and the `gq mcp` server depend on this interface;
 // tests inject a fake implementation.
@@ -260,7 +264,7 @@ func (c *Client) call(method, endpoint string, body io.Reader, contentType strin
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, readBody(resp.Body))
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, readBody(io.LimitReader(resp.Body, maxErrorBody)))
 	}
 	out, err := io.ReadAll(resp.Body)
 	if err != nil {

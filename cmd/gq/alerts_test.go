@@ -85,7 +85,7 @@ func TestListAlertsTool_AllInstancesAtOnce(t *testing.T) {
 	if r.IsError {
 		t.Fatalf("one failing instance must not fail the call: %s", resultText(r))
 	}
-	var list AlertList
+	var list alertList
 	if err := json.Unmarshal([]byte(resultText(r)), &list); err != nil {
 		t.Fatalf("want JSON, got %q: %v", resultText(r), err)
 	}
@@ -169,8 +169,9 @@ func TestListAlertsTool_Limit(t *testing.T) {
 		t.Errorf("want more=1 with limit 2, got %s", resultText(r))
 	}
 	for _, bad := range []float64{0, -1, 1.5, 1001} {
-		if r := callAlertTool(t, src, "list_alerts", map[string]any{"limit": bad}); !r.IsError {
-			t.Errorf("limit %v should be rejected", bad)
+		if r := callAlertTool(t, src, "list_alerts", map[string]any{"limit": bad}); !r.IsError ||
+			resultText(r) != "limit must be a positive integer not exceeding 1000" {
+			t.Errorf("limit %v should be rejected with the usual message, got %q", bad, resultText(r))
 		}
 	}
 }

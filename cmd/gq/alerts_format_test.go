@@ -80,8 +80,8 @@ func TestFormatAlert_HeaderFirstWithoutNoise(t *testing.T) {
 		"- silence: https://grafana.example.com/alerting/silence/new?alertmanager=grafana" +
 		"&matcher=__alert_rule_uid__%3Drule-1&matcher=alertname%3DHighErrorRate&matcher=grafana_folder%3DShop" +
 		"&matcher=namespace%3Dshop&matcher=service%3Dweb&matcher=severity%3Dcritical\n"
-	if got := FormatAlert(detailFixture(), "prod"); got != want {
-		t.Errorf("FormatAlert mismatch\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	if got := formatAlert(detailFixture(), "prod"); got != want {
+		t.Errorf("formatAlert mismatch\n--- got ---\n%s\n--- want ---\n%s", got, want)
 	}
 }
 
@@ -93,7 +93,7 @@ func TestFormatAlert_OptionalParts(t *testing.T) {
 	d.Alert.Annotations = map[string]string{"description": "one line"}
 	d.Rule, d.RuleErr, d.DatasourceKind = nil, "HTTP 403: forbidden", ""
 
-	got := FormatAlert(d, "")
+	got := formatAlert(d, "")
 	for _, want := range []string{
 		"- grafana: https://grafana.example.com\n", // single-instance mode: no instance name
 		"- silenced by: s1, s2\n",
@@ -117,7 +117,7 @@ func TestFormatAlert_ValuesCannotStartNewMarkdown(t *testing.T) {
 	d := detailFixture()
 	d.Alert.Annotations["summary"] = "fine\n## Rule\n- fake: injected"
 	d.Alert.Annotations["description"] = "````\n## Links\n````"
-	got := FormatAlert(d, "prod")
+	got := formatAlert(d, "prod")
 	if !strings.Contains(got, "- summary: fine ## Rule - fake: injected\n") {
 		t.Errorf("summary should collapse to one line:\n%s", got)
 	}
@@ -126,7 +126,7 @@ func TestFormatAlert_ValuesCannotStartNewMarkdown(t *testing.T) {
 	}
 }
 
-func instanceAlert(instance, fp, severity, startsAt string, labels map[string]string) InstanceAlert {
+func newInstanceAlert(instance, fp, severity, startsAt string, labels map[string]string) instanceAlert {
 	var a grafana.Alert
 	a.Fingerprint = fp
 	a.Status.State = "active"
@@ -136,16 +136,16 @@ func instanceAlert(instance, fp, severity, startsAt string, labels map[string]st
 		a.Labels[k] = v
 	}
 	a.Annotations = map[string]string{"summary": "s-" + fp}
-	return InstanceAlert{Instance: instance, Alert: a}
+	return instanceAlert{Instance: instance, Alert: a}
 }
 
 func TestCompactAlerts_SharedLabelsOnceSortedBySeverityThenNewest(t *testing.T) {
-	alerts := []InstanceAlert{
-		instanceAlert("dev", "a1", "warning", "2026-01-02T10:00:00Z", map[string]string{"alertname": "X", "job": "web"}),
-		instanceAlert("prod", "a2", "critical", "2026-01-02T08:00:00Z", map[string]string{"alertname": "X", "job": "api"}),
-		instanceAlert("prod", "a3", "warning", "2026-01-02T11:00:00Z", map[string]string{"alertname": "X", "job": "db"}),
+	alerts := []instanceAlert{
+		newInstanceAlert("dev", "a1", "warning", "2026-01-02T10:00:00Z", map[string]string{"alertname": "X", "job": "web"}),
+		newInstanceAlert("prod", "a2", "critical", "2026-01-02T08:00:00Z", map[string]string{"alertname": "X", "job": "api"}),
+		newInstanceAlert("prod", "a3", "warning", "2026-01-02T11:00:00Z", map[string]string{"alertname": "X", "job": "db"}),
 	}
-	out, err := json.Marshal(CompactAlerts(alerts, map[string]string{"stage": "HTTP 403: forbidden"}, 100))
+	out, err := json.Marshal(compactAlerts(alerts, map[string]string{"stage": "HTTP 403: forbidden"}, 100))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,8 +160,8 @@ func TestCompactAlerts_SharedLabelsOnceSortedBySeverityThenNewest(t *testing.T) 
 }
 
 func TestCompactAlerts_SingleAlertKeepsItsLabels(t *testing.T) {
-	alerts := []InstanceAlert{instanceAlert("", "a1", "warning", "2026-01-02T10:00:00Z", map[string]string{"alertname": "X"})}
-	out, _ := json.Marshal(CompactAlerts(alerts, nil, 100))
+	alerts := []instanceAlert{newInstanceAlert("", "a1", "warning", "2026-01-02T10:00:00Z", map[string]string{"alertname": "X"})}
+	out, _ := json.Marshal(compactAlerts(alerts, nil, 100))
 	want := `{"alerts":[{"fingerprint":"a1","state":"active","startsAt":"2026-01-02T10:00:00Z","summary":"s-a1","labels":{"alertname":"X","severity":"warning"}}]}`
 	if string(out) != want {
 		t.Errorf("got  %s\nwant %s", out, want)
@@ -169,19 +169,19 @@ func TestCompactAlerts_SingleAlertKeepsItsLabels(t *testing.T) {
 }
 
 func TestCompactAlerts_LimitCountsTheRest(t *testing.T) {
-	alerts := []InstanceAlert{
-		instanceAlert("dev", "a1", "warning", "2026-01-02T10:00:00Z", nil),
-		instanceAlert("dev", "a2", "critical", "2026-01-02T10:00:00Z", nil),
-		instanceAlert("dev", "a3", "info", "2026-01-02T10:00:00Z", nil),
+	alerts := []instanceAlert{
+		newInstanceAlert("dev", "a1", "warning", "2026-01-02T10:00:00Z", nil),
+		newInstanceAlert("dev", "a2", "critical", "2026-01-02T10:00:00Z", nil),
+		newInstanceAlert("dev", "a3", "info", "2026-01-02T10:00:00Z", nil),
 	}
-	list := CompactAlerts(alerts, nil, 2)
+	list := compactAlerts(alerts, nil, 2)
 	if len(list.Alerts) != 2 || list.More != 1 || list.Alerts[0].Fingerprint != "a2" {
 		t.Errorf("want the 2 most severe and more=1, got %+v", list)
 	}
 }
 
 func TestCompactAlerts_EmptyIsAnEmptyList(t *testing.T) {
-	out, _ := json.Marshal(CompactAlerts(nil, nil, 100))
+	out, _ := json.Marshal(compactAlerts(nil, nil, 100))
 	if string(out) != `{"alerts":[]}` {
 		t.Errorf("got %s", out)
 	}

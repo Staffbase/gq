@@ -49,9 +49,9 @@ func (s alertSource) multiInstance() bool { return len(s.names) > 0 }
 // list asks the instance, or every instance at once when instance is "", for
 // the alerts matching f. Grafana filters; a failing instance lands in the
 // result's errors, unless no instance answered: then the call fails.
-func (s alertSource) list(instance string, f grafana.AlertFilter, limit int) (AlertList, error) {
+func (s alertSource) list(instance string, f grafana.AlertFilter, limit int) (alertList, error) {
 	if err := f.Validate(); err != nil {
-		return AlertList{}, err
+		return alertList{}, err
 	}
 	targets := s.names
 	if instance != "" || !s.multiInstance() {
@@ -75,9 +75,9 @@ func (s alertSource) list(instance string, f grafana.AlertFilter, limit int) (Al
 	wg.Wait()
 
 	if len(targets) == 1 && results[0].err != nil {
-		return AlertList{}, results[0].err
+		return alertList{}, results[0].err
 	}
-	var all []InstanceAlert
+	var all []instanceAlert
 	errs := map[string]string{}
 	for i, name := range targets {
 		if results[i].err != nil {
@@ -85,13 +85,13 @@ func (s alertSource) list(instance string, f grafana.AlertFilter, limit int) (Al
 			continue
 		}
 		for _, a := range results[i].alerts {
-			all = append(all, InstanceAlert{Instance: name, Alert: a})
+			all = append(all, instanceAlert{Instance: name, Alert: a})
 		}
 	}
 	if len(errs) == len(targets) {
-		return AlertList{}, noInstanceAnswered(targets, errs)
+		return alertList{}, noInstanceAnswered(targets, errs)
 	}
-	return CompactAlerts(all, errs, limit), nil
+	return compactAlerts(all, errs, limit), nil
 }
 
 // noInstanceAnswered names each distinct error once, with the instances that
@@ -126,7 +126,7 @@ func (s alertSource) alert(instance, fingerprint, alertname string) (string, err
 	if err != nil {
 		return "", err
 	}
-	return FormatAlert(d, instance), nil
+	return formatAlert(d, instance), nil
 }
 
 // registerAlertTools registers list_alerts and get_alert. Unlike the query
@@ -146,7 +146,7 @@ func registerAlertTools(s *server.MCPServer, src alertSource) {
 		mcp.NewTool("list_alerts",
 			append(listInstance,
 				mcp.WithDescription(
-					"List firing Grafana Alerting alerts, most severe and newest first. Grafana filters by the label matchers, "+
+					"Query the alerts firing in Grafana Alerting, most severe and newest first. Grafana filters by the label matchers, "+
 						"e.g. alertname=\"HighErrorRate\", namespace=\"shop\", team=\"payments\", severity=~\"critical|high\", "+
 						"or the labels that name a cluster or environment. Labels all listed alerts share are in commonLabels once; "+
 						"instances that could not be asked are in errors.",
@@ -155,7 +155,7 @@ func registerAlertTools(s *server.MCPServer, src alertSource) {
 				mcp.WithArray("matchers", mcp.WithStringItems(),
 					mcp.Description("Label matchers that must all match (operators =, !=, =~, !~), e.g. [\"namespace=\\\"shop\\\"\"].")),
 				mcp.WithString("state", mcp.Enum(alertStateNames()...),
-					mcp.Description("active (default), suppressed (silenced or inhibited), unprocessed, or all.")),
+					mcp.Description("Alert state, active by default; suppressed means silenced or inhibited.")),
 				mcp.WithNumber("limit", mcp.Description(fmt.Sprintf("Max alerts to return (default %d, max %d); more counts the rest.", defaultAlertLimit, maxAlertLimit))),
 			)...,
 		),
@@ -238,8 +238,8 @@ func stringList(v any) ([]string, error) {
 func buildAlertsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "alerts",
-		Short: "List firing Grafana alerts, filtered by Grafana",
-		Long: "List firing Grafana Alerting alerts. Grafana filters by the label matchers, e.g.\n" +
+		Short: "Query the alerts firing in Grafana, filtered by Grafana",
+		Long: "Query the alerts firing in Grafana Alerting. Grafana filters by the label matchers, e.g.\n" +
 			"  gq alerts -m 'namespace=\"shop\"' -m 'severity=~\"critical|high\"'\n" +
 			"Without --instance, every instance of a multi-instance config is asked at once.",
 		RunE: runAlerts,
