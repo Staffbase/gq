@@ -14,6 +14,16 @@ go install github.com/Staffbase/gq/cmd/gq@latest
 
 You can also grab a pre-built tarball from the [releases page](https://github.com/Staffbase/gq/releases) and put `gq` on your `PATH`.
 
+### From a checkout
+
+The `Makefile` builds with the same version stamp as a release; `make` lists the targets.
+
+```sh
+make build     # ./bin/gq
+make install   # into $GOBIN (default ~/go/bin)
+make check     # vet, tests with the race detector, golangci-lint: run before a PR
+```
+
 ## Configuration
 
 `gq` reads connection settings from a JSON config file. Point to it via the `GRAFANA_CONFIG` environment variable:
