@@ -185,11 +185,17 @@ func formatAlert(d *grafana.AlertDetail, instance string) string {
 		}
 	}
 
+	// Links carry the alert's organization, so a browser on another Grafana
+	// org opens this alert's rule, dashboard and silence, not a namesake's.
+	org := url.Values{}
+	if id := a.Annotations["__orgId__"]; id != "" {
+		org.Set("orgId", id)
+	}
 	ruleLink := ""
 	switch {
 	case d.Rule != nil:
 		r := d.Rule
-		ruleLink = d.BaseURL + "/alerting/grafana/" + url.PathEscape(r.UID) + "/view"
+		ruleLink = withQuery(d.BaseURL+"/alerting/grafana/"+url.PathEscape(r.UID)+"/view", org)
 		b.WriteString("\n## Rule\n\n")
 		fmt.Fprintf(&b, "- %s\n", strings.Join(nonEmpty(oneLine(r.Name)+" (uid "+oneLine(r.UID)+")",
 			labeled("folder", oneLine(r.Folder)), labeled("group", oneLine(r.Group)),
@@ -211,17 +217,25 @@ func formatAlert(d *grafana.AlertDetail, instance string) string {
 
 	b.WriteString("\n## Links\n\n")
 	if uid := a.Annotations["__dashboardUid__"]; uid != "" {
-		u := d.BaseURL + "/d/" + url.PathEscape(uid)
+		q := maps.Clone(org)
 		if panel := a.Annotations["__panelId__"]; panel != "" {
-			u += "?viewPanel=" + url.QueryEscape(panel)
+			q.Set("viewPanel", panel)
 		}
-		item("dashboard", u)
+		item("dashboard", withQuery(d.BaseURL+"/d/"+url.PathEscape(uid), q))
 	}
 	if ruleLink == "" {
 		item("generator", oneLine(a.GeneratorURL))
 	}
-	item("silence", silenceURL(d.BaseURL, a.Labels))
+	item("silence", silenceURL(d.BaseURL, a.Labels, org))
 	return b.String()
+}
+
+// withQuery appends q to u, when there is any.
+func withQuery(u string, q url.Values) string {
+	if len(q) == 0 {
+		return u
+	}
+	return u + "?" + q.Encode()
 }
 
 // queryTools names the gq tool that queries each kind of datasource.
@@ -232,9 +246,11 @@ var queryTools = map[grafana.DatasourceKind]string{
 	grafana.KindProfiles: toolQueryProfile,
 }
 
-// silenceURL opens Grafana's "new silence" form prefilled with all labels.
-func silenceURL(base string, labels map[string]string) string {
-	q := url.Values{"alertmanager": {"grafana"}}
+// silenceURL opens Grafana's "new silence" form of the org prefilled with all
+// labels.
+func silenceURL(base string, labels map[string]string, org url.Values) string {
+	q := maps.Clone(org)
+	q.Set("alertmanager", "grafana")
 	for _, k := range slices.Sorted(maps.Keys(labels)) {
 		q.Add("matcher", k+"="+labels[k])
 	}

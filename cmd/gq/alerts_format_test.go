@@ -73,13 +73,13 @@ func TestFormatAlert_HeaderFirstWithoutNoise(t *testing.T) {
 		"\n## Rule\n\n" +
 		"- HighErrorRate (uid rule-1) · folder: Shop · group: shop-rules · health: ok · last eval: 2026-01-02T10:05:00Z\n" +
 		"- datasource: vm (metrics) → query_metrics\n" +
-		"- link: https://grafana.example.com/alerting/grafana/rule-1/view\n" +
+		"- link: https://grafana.example.com/alerting/grafana/rule-1/view?orgId=1\n" +
 		"\n```\nrate(errors_total[5m]) > 1\n```\n" +
 		"\n## Links\n\n" +
-		"- dashboard: https://grafana.example.com/d/dash1?viewPanel=4\n" +
+		"- dashboard: https://grafana.example.com/d/dash1?orgId=1&viewPanel=4\n" +
 		"- silence: https://grafana.example.com/alerting/silence/new?alertmanager=grafana" +
 		"&matcher=__alert_rule_uid__%3Drule-1&matcher=alertname%3DHighErrorRate&matcher=grafana_folder%3DShop" +
-		"&matcher=namespace%3Dshop&matcher=service%3Dweb&matcher=severity%3Dcritical\n"
+		"&matcher=namespace%3Dshop&matcher=service%3Dweb&matcher=severity%3Dcritical&orgId=1\n"
 	if got := formatAlert(detailFixture(), "prod"); got != want {
 		t.Errorf("formatAlert mismatch\n--- got ---\n%s\n--- want ---\n%s", got, want)
 	}
