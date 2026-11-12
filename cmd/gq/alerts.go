@@ -47,8 +47,11 @@ func (s alertSource) registry() bool { return len(s.names) > 0 }
 
 // list asks the instance, or every instance at once when instance is "", for
 // the alerts matching f. Grafana filters; a failing instance lands in the
-// result's errors unless it was the only one asked.
+// result's errors, unless no instance answered: then the call fails.
 func (s alertSource) list(instance string, f grafana.AlertFilter, limit int) (grafana.AlertList, error) {
+	if err := f.Validate(); err != nil {
+		return grafana.AlertList{}, err
+	}
 	targets := s.names
 	if instance != "" || !s.registry() {
 		targets = []string{instance}
@@ -84,7 +87,29 @@ func (s alertSource) list(instance string, f grafana.AlertFilter, limit int) (gr
 			all = append(all, grafana.InstanceAlert{Instance: name, Alert: a})
 		}
 	}
+	if len(errs) == len(targets) {
+		return grafana.AlertList{}, noInstanceAnswered(targets, errs)
+	}
 	return grafana.CompactAlerts(all, errs, limit), nil
+}
+
+// noInstanceAnswered names each distinct error once, with the instances that
+// got it: a bad matcher fails every instance the same way.
+func noInstanceAnswered(targets []string, errs map[string]string) error {
+	var msgs []string
+	byMsg := map[string][]string{}
+	for _, name := range targets {
+		msg := errs[name]
+		if byMsg[msg] == nil {
+			msgs = append(msgs, msg)
+		}
+		byMsg[msg] = append(byMsg[msg], name)
+	}
+	parts := make([]string, len(msgs))
+	for i, msg := range msgs {
+		parts[i] = strings.Join(byMsg[msg], ", ") + ": " + msg
+	}
+	return fmt.Errorf("no instance answered: %s", strings.Join(parts, "; "))
 }
 
 // alert renders one alert of an instance as Markdown.

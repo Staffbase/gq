@@ -15,6 +15,7 @@
 package grafana
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -138,7 +139,7 @@ func FormatAlert(d *AlertDetail, instance string) string {
 		}
 	}
 
-	fmt.Fprintf(&b, "# %s\n", oneLine(cmpOr(a.Labels["alertname"], "(unnamed)")))
+	fmt.Fprintf(&b, "# %s\n", oneLine(cmp.Or(a.Labels["alertname"], "(unnamed)")))
 	if instance != "" {
 		item("instance", oneLine(instance)+" ("+d.BaseURL+")")
 	} else {
@@ -315,11 +316,4 @@ func labeled(name, v string) string {
 
 func nonEmpty(ss ...string) []string {
 	return slices.DeleteFunc(ss, func(s string) bool { return s == "" })
-}
-
-func cmpOr(v, fallback string) string {
-	if v == "" {
-		return fallback
-	}
-	return v
 }

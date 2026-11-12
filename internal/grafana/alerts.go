@@ -57,6 +57,13 @@ type Alert struct {
 	Annotations map[string]string `json:"annotations"`
 }
 
+// Validate reports a state the API has no flags for, so callers asking several
+// instances can fail once before asking any.
+func (f AlertFilter) Validate() error {
+	_, err := alertQuery(f)
+	return err
+}
+
 // ListAlerts returns the alerts matching f. Grafana does the filtering: a
 // matcher it rejects comes back as an error.
 func (c *Client) ListAlerts(f AlertFilter) ([]Alert, error) {
@@ -160,7 +167,8 @@ func (c *Client) alertRule(uid string) (*AlertRule, error) {
 			if r.UID == uid {
 				return &AlertRule{
 					UID: r.UID, Name: r.Name, Group: g.Name, Folder: g.File, Query: queryString(r.Query),
-					DatasourceUIDs: r.DatasourceUIDs, Health: r.Health, LastError: r.LastError, LastEvaluation: r.LastEvaluation,
+					// one UID per query: a rule with two queries on one datasource lists it twice
+					DatasourceUIDs: slices.Compact(slices.Sorted(slices.Values(r.DatasourceUIDs))), Health: r.Health, LastError: r.LastError, LastEvaluation: r.LastEvaluation,
 				}, nil
 			}
 		}

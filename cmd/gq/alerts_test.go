@@ -133,6 +133,33 @@ func TestListAlertsTool_SingleInstanceErrorIsAToolError(t *testing.T) {
 	}
 }
 
+func TestListAlertsTool_BadStateFailsBeforeAskingAnyone(t *testing.T) {
+	dev := &fakeQuerier{}
+	src := alertSource{names: []string{"dev", "prod"}, get: fakeInstances(map[string]*fakeQuerier{"dev": dev, "prod": {}})}
+	r := callAlertTool(t, src, "list_alerts", map[string]any{"state": "firing"})
+	if !r.IsError || !strings.Contains(resultText(r), "unknown state") {
+		t.Fatalf("want an unknown-state tool error, got %s", resultText(r))
+	}
+	if dev.listCalls != 0 {
+		t.Error("no instance should be asked with a bad state")
+	}
+}
+
+func TestListAlertsTool_EveryInstanceFailingIsAToolError(t *testing.T) {
+	bad := errors.New("HTTP 400: bad matcher")
+	src := alertSource{names: []string{"dev", "prod", "stage"}, get: fakeInstances(map[string]*fakeQuerier{
+		"dev": {alertsErr: bad}, "prod": {alertsErr: bad}, "stage": {alertsErr: errors.New("HTTP 403: forbidden")},
+	})}
+	r := callAlertTool(t, src, "list_alerts", map[string]any{"matchers": []any{`x=~"("`}})
+	if !r.IsError {
+		t.Fatalf("want a tool error when no instance answered, got %s", resultText(r))
+	}
+	text := resultText(r)
+	if strings.Count(text, "bad matcher") != 1 || !strings.Contains(text, "dev, prod") || !strings.Contains(text, "stage: HTTP 403") {
+		t.Errorf("want each distinct error once with its instances, got %q", text)
+	}
+}
+
 func TestListAlertsTool_Limit(t *testing.T) {
 	q := &fakeQuerier{alerts: []grafana.Alert{fakeAlert("a", "X", "s"), fakeAlert("b", "X", "s"), fakeAlert("c", "X", "s")}}
 	src := alertSource{get: fakeInstances(map[string]*fakeQuerier{"": q})}

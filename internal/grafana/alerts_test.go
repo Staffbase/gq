@@ -165,6 +165,7 @@ func TestGetAlert_DatasourceMapsToItsTool(t *testing.T) {
 		`"vm"`: "query_metrics", `"vl"`: "query_logs",
 		`"victoriatraces"`: "query_traces", `"pyroscope"`: "query_profile",
 		`"other"`: "", `"vm","vl"`: "", // several datasources: no single tool
+		`"vm","vm"`: "query_metrics", // Grafana lists one UID per query
 	} {
 		rules := strings.Replace(rulesFixture, `["vm"]`, "["+uids+"]", 1)
 		c, _ := alertsServer(t, map[string]string{alertsPath: ruleAlertFixture, rulesPath: rules})
