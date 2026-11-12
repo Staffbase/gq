@@ -52,7 +52,7 @@ func main() {
 func buildRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "gq",
-		Short: "Query logs, metrics, traces and profiles via Grafana datasource proxy",
+		Short: "Query Grafana: logs, metrics, traces, profiles and alerts",
 	}
 	root.AddCommand(
 		buildQueryCmd(),

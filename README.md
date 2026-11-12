@@ -1,6 +1,6 @@
 # gq
 
-`gq` is a CLI tool and MCP server for querying logs and metrics via Grafana's datasource proxy. It lets developers and AI agents search VictoriaLogs and VictoriaMetrics without direct cluster access or port-forwarding.
+`gq` is a CLI tool and MCP server for querying Grafana: logs, metrics, traces and profiles via Grafana's datasource proxy, and firing alerts from Grafana Alerting. It lets developers and AI agents search VictoriaLogs, VictoriaMetrics, VictoriaTraces and Pyroscope, and triage alerts across several Grafana instances, without direct cluster access or port-forwarding.
 
 ## Install
 
