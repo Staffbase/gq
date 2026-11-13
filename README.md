@@ -1,6 +1,6 @@
 # gq
 
-`gq` is a CLI tool and MCP server for querying logs and metrics via Grafana's datasource proxy. It lets developers and AI agents search VictoriaLogs and VictoriaMetrics without direct cluster access or port-forwarding.
+`gq` is a CLI tool and MCP server for querying Grafana: logs, metrics, traces and profiles through Grafana's datasource proxy, and the alerts currently firing in Grafana Alerting. It lets developers and AI agents search VictoriaLogs, VictoriaMetrics, VictoriaTraces and Pyroscope, and triage alerts across several Grafana instances, without direct cluster access or port-forwarding.
 
 ## Install
 
@@ -13,6 +13,16 @@ go install github.com/Staffbase/gq/cmd/gq@latest
 ```
 
 You can also grab a pre-built tarball from the [releases page](https://github.com/Staffbase/gq/releases) and put `gq` on your `PATH`.
+
+### From a checkout
+
+The `Makefile` builds with the same version stamp as a release; `make` lists the targets.
+
+```sh
+make build     # ./bin/gq
+make install   # into $GOBIN (default ~/go/bin)
+make check     # vet, tests with the race detector, golangci-lint: run before a PR
+```
 
 ## Configuration
 
@@ -82,7 +92,7 @@ A long-running MCP server outlives most tokens. Rather than fail every call afte
 { "token_command": "vault read -field=token secret/grafana" }
 ```
 
-On a `401`, `gq` runs the command via `sh -c`, takes its trimmed stdout as the new token, and retries the request once. If the retry also fails, the error surfaces normally — the command runs once per failure, never in a loop. A non-zero exit or empty output is reported with the command's stderr, so a broken auth helper says so rather than looking like a Grafana outage.
+On a `401`, `gq` runs the command via `sh -c`, takes its trimmed stdout as the new token, and retries the request once. If the retry also fails, the error surfaces normally — the command runs once per failure, never in a loop. A non-zero exit or empty output is reported as an error, so a broken auth helper says so rather than looking like a Grafana outage. The command's stderr goes to `gq`'s own stderr (your terminal, or the MCP client's log), never into the error message: an auth helper may print secrets, and MCP errors reach the agent.
 
 Concurrent calls that all hit an expired token refresh once between them, not once each.
 
@@ -127,6 +137,13 @@ gq profile-labels                                   # which services have profil
 gq profile -s '{service_name="backend"}' --limit 10
 gq profile-types                                    # other profile types, for --type
 
+# Firing Grafana alerts, filtered by Grafana; without --instance every instance is asked at once
+gq alerts -m 'namespace="shop"' -m 'severity=~"critical|high"'
+gq alerts -m 'alertname="HighErrorRate"' --state all --instance prod
+
+# Show one alert: header, description, rule query and links
+gq alert <fingerprint> --instance prod --alertname HighErrorRate
+
 # Pick an instance, when GRAFANA_CONFIG holds several
 gq query -q "severity:ERROR _time:1h" --instance prod
 gq metrics -q "up" --instance staging
@@ -135,7 +152,24 @@ gq metrics -q "up" --instance staging
 gq version
 ```
 
-`--instance` is required when the config file defines several, and rejected when it does not. Naming one that does not exist lists the ones that do.
+`--instance` is required when the config file defines several, and rejected when it does not. Naming one that does not exist lists the ones that do. `gq alerts` is the exception: without `--instance` it asks every instance.
+
+## Alerts
+
+`gq alerts` and the `list_alerts` tool query the alerts currently firing in Grafana Alerting (not in a standalone Prometheus Alertmanager). Grafana does the filtering: each `-m` / `matchers` entry is an Alertmanager label matcher (`=`, `!=`, `=~`, `!~`), all must match, and `--state` / `state` picks `active` (default), `suppressed` (silenced or inhibited), `unprocessed` or `all`. Filter by whatever labels your rules carry: alert name, namespace, team, cluster, severity. A matcher Grafana rejects is returned as its error. Without an instance, every instance of a multi-instance config is asked in parallel; instances that fail are listed under `errors` and the others still answer.
+
+The list is compact JSON for agents: labels every listed alert shares appear once under `commonLabels`, and `more` counts the alerts beyond the limit (default 100). `gq alert` / `get_alert` returns one alert as short Markdown: a header (instance, severity, state, start, summary, runbook, current values, labels), the description, the alert rule with its query and the gq tool that runs it, and dashboard and silence links. Grafana internals and values shown twice are left out.
+
+The token needs read access to alerts and alert rules (`alert.instances:read`, `alert.rules:read`); Grafana's Viewer role has both.
+
+### Agent skill: alert triage
+
+[`skills/alert-triage`](skills/alert-triage/SKILL.md) is a skill for coding agents that triages the alerts firing in Grafana with these tools: it turns a request like "triage the alerts of team payments" into `list_alerts` filters, groups alerts that likely share a cause, investigates each group in its own subagent with the gq query tools, and reports root causes with proposed fixes. For Claude Code, link it into your skills:
+
+```sh
+mkdir -p ~/.claude/skills
+ln -s "$PWD/skills/alert-triage" ~/.claude/skills/alert-triage
+```
 
 ## MCP Server
 
@@ -152,10 +186,12 @@ gq version
 | `query_profile_types` | List profile types available in Pyroscope (CPU, memory, ...) |
 | `query_profile_label_values` | List values of a profile label, e.g. `service_name` to find profiled services |
 | `query_profile` | Query merged profiles from Pyroscope. Returns the top functions by self cost with their share of the total |
+| `list_alerts` | Query the alerts firing in Grafana, filtered by Grafana with label matchers and state; all instances at once unless `instance` is given. See [Alerts](#alerts) |
+| `get_alert` | One alert as short Markdown: header, description, rule query with the gq tool to run it, links |
 
 The trace and profile tools go through the Grafana datasource proxy with the same auth as the other tools. Traces use the Tempo-compatible API of VictoriaTraces (v0.9.4+); profiles use Pyroscope's query API. In `query_profile` results, `other` is Pyroscope's bucket for small nodes it pruned; a shorter time range prunes less.
 
-When `GRAFANA_CONFIG` points at a [multi-instance file](#several-instances), each tool takes one extra required argument, `instance`, and its description lists the names available. One server entry then covers every environment — worth doing, because each entry's tools occupy space in the agent's context whether or not they get called.
+When `GRAFANA_CONFIG` points at a [multi-instance file](#several-instances), each tool takes one extra required argument, `instance`, and its description lists the names available (for `list_alerts` it is optional). One server entry then covers every environment — worth doing, because each entry's tools occupy space in the agent's context whether or not they get called.
 
 ### Claude Code
 

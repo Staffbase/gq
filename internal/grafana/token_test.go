@@ -189,12 +189,16 @@ func TestTokenCommand_FailureIsReported(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error when token_command fails")
 	}
-	// The exit code and stderr are the only clue the user gets about why
-	// authentication is not recovering — keep them in the message.
-	for _, want := range []string{"token refresh failed", "exited 3", "no credentials"} {
+	// The exit code tells the user why authentication is not recovering.
+	for _, want := range []string{"token refresh failed", "exited 3"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("expected %q in error, got: %v", want, err)
 		}
+	}
+	// The command's own output stays out: an auth helper may print secrets, and
+	// in MCP mode the error reaches the agent and its model provider.
+	if strings.Contains(err.Error(), "no credentials") {
+		t.Errorf("token_command stderr leaked into the error: %v", err)
 	}
 }
 

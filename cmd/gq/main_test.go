@@ -37,6 +37,15 @@ type fakeQuerier struct {
 	profileValues []string
 	profile       *grafana.ProfileSummary
 	profileErr    error
+	alerts        []grafana.Alert
+	alertsErr     error
+	alertDetail   *grafana.AlertDetail
+	alertErr      error
+
+	capturedFilter      grafana.AlertFilter
+	alertListCalls      int
+	capturedFingerprint string
+	capturedAlertname   string
 
 	capturedQuery string
 	capturedStart string
@@ -83,6 +92,18 @@ func (f *fakeQuerier) SearchTraces(query, start, end string, limit int) ([]grafa
 func (f *fakeQuerier) GetTrace(traceID string) (*grafana.TraceSummary, error) {
 	f.capturedQuery = traceID
 	return f.trace, f.tracesErr
+}
+
+func (f *fakeQuerier) ListAlerts(filter grafana.AlertFilter) ([]grafana.Alert, error) {
+	f.alertListCalls++
+	f.capturedFilter = filter
+	return f.alerts, f.alertsErr
+}
+
+func (f *fakeQuerier) GetAlert(fingerprint, alertname string) (*grafana.AlertDetail, error) {
+	f.capturedFingerprint = fingerprint
+	f.capturedAlertname = alertname
+	return f.alertDetail, f.alertErr
 }
 
 func (f *fakeQuerier) ProfileTypes(start, end string) ([]grafana.ProfileType, error) {

@@ -35,6 +35,10 @@ import (
 // unreachable Grafana cannot hang the CLI or MCP server indefinitely.
 const defaultHTTPTimeout = 30 * time.Second
 
+// maxErrorBody caps how much of an error response ends up in an error: enough
+// for a datasource's message, not a whole HTML error page in an agent's context.
+const maxErrorBody = 1024
+
 // Querier is the interface implemented by Client.
 // Both the gq CLI and the `gq mcp` server depend on this interface;
 // tests inject a fake implementation.
@@ -48,6 +52,8 @@ type Querier interface {
 	ProfileTypes(start, end string) ([]ProfileType, error)
 	ProfileLabelValues(label, start, end string) ([]string, error)
 	SelectProfile(profileTypeID, selector, start, end string, top int) (*ProfileSummary, error)
+	ListAlerts(f AlertFilter) ([]Alert, error)
+	GetAlert(fingerprint, alertname string) (*AlertDetail, error)
 }
 
 // Client holds connection config for the Grafana proxy.
@@ -225,14 +231,19 @@ func (c *Client) doOnce(method, endpoint string, body io.Reader, contentType, to
 // {url} is substituted here rather than at config load, so it works the same
 // whether the command came from a single-instance config, a per-instance
 // override, or a registry-level default — one rule to document, one to test.
+//
+// The command's stderr goes to gq's own stderr (the terminal for the CLI, the
+// client's log for `gq mcp`), never into the error: an auth helper may print
+// secrets, and in MCP mode errors reach the agent and its model provider.
 func (c *Client) runTokenCommand() (string, error) {
 	command := strings.ReplaceAll(c.TokenCommand, "{url}", c.BaseURL)
 	cmd := exec.Command("sh", "-c", command) //nolint:gosec // user-supplied config
+	cmd.Stderr = os.Stderr
 	out, err := cmd.Output()
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			return "", fmt.Errorf("token_command exited %d: %s", exitErr.ExitCode(), strings.TrimSpace(string(exitErr.Stderr)))
+			return "", fmt.Errorf("token_command exited %d (its output went to gq's stderr)", exitErr.ExitCode())
 		}
 		return "", err
 	}
@@ -246,13 +257,19 @@ func (c *Client) runTokenCommand() (string, error) {
 // proxy calls path on the datasource uid through Grafana's datasource proxy and
 // returns the body of a 200 response.
 func (c *Client) proxy(uid, method, path string, body io.Reader, contentType string) ([]byte, error) {
-	resp, err := c.do(method, c.BaseURL+"/api/datasources/proxy/uid/"+uid+"/"+path, body, contentType)
+	return c.call(method, c.BaseURL+"/api/datasources/proxy/uid/"+uid+"/"+path, body, contentType)
+}
+
+// call sends a request (with auth and token refresh) and returns the body of a
+// 200 response; any other status is an error carrying the response body.
+func (c *Client) call(method, endpoint string, body io.Reader, contentType string) ([]byte, error) {
+	resp, err := c.do(method, endpoint, body, contentType)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, readBody(resp.Body))
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, readBody(io.LimitReader(resp.Body, maxErrorBody)))
 	}
 	out, err := io.ReadAll(resp.Body)
 	if err != nil {
