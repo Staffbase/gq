@@ -61,7 +61,7 @@ jobs:
   dependabot-auto-merge:
     name: Auto Merge (Dependabot)
     needs: [test, lint]
-    uses: Staffbase/gha-workflows/.github/workflows/template_automerge_dependabot.yml@a800734194905ec6b95f9c47aab5f69b15e5cfff # v20.0.0
+    uses: Staffbase/gha-workflows/.github/workflows/template_automerge_dependabot.yml@54ff8b3e9fe5e8c4a11d5c770b16dd5c6be4e48b # v20.1.1
     secrets:
       client_id: ${{ vars.STAFFBASE_ACTIONS_CLIENT_ID }}
       private_key: ${{ secrets.STAFFBASE_ACTIONS_PRIVATE_KEY }}
