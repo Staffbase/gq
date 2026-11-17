@@ -102,9 +102,11 @@ instructions.
    replayed, and mark any gq query you write instead as an approximation.
    Where the skill uses `sre-kubernetes`, query the cluster through a
    Kubernetes MCP server in your session (flux-operator-mcp or similar); only
-   when there is none, use the `sre-kubernetes` skill. Query code through
-   GitHub. You run in the background and cannot ask the user: record missing
-   access in the report and go on with what you can see.
+   when there is none, use the `sre-kubernetes` skill with the kubeconfig
+   context that matches the alert's cluster label (no match: record missing
+   cluster access). Query code through GitHub. You run in the background and
+   cannot ask the user: record missing access in the report and go on with
+   what you can see.
 3. Stay read-only: diagnose first, query metrics, logs, traces and cluster
    state, and leave every system as you found it. Show a proposed change
    instead of applying it.
