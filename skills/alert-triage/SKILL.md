@@ -11,9 +11,11 @@ e.g. `claude mcp add gq --env GRAFANA_CONFIG=<config> -- gq mcp`, and stop.
 
 The investigating subagents use the
 [`sre-analyze-alert`](https://github.com/ricoberger/dotfiles/tree/main/.agents/skills/sre-analyze-alert)
-skill; its helpers `sre-grafana` and `sre-kubernetes` are not needed. When it
-is not installed, mention the link to the user once; the subagents still run
-without it.
+skill. Its helper `sre-grafana` is not needed (the gq tools replace it), and
+`sre-kubernetes` only when no Kubernetes MCP server, such as
+[flux-operator-mcp](https://fluxcd.control-plane.io/mcp/) or similar, is
+connected. When `sre-analyze-alert` is not installed, mention the link to the
+user once; the subagents still run without it.
 
 ## 1. Scope
 
@@ -95,8 +97,9 @@ instructions.
    `sre-grafana` or asks for a Grafana URL or token, query through the gq tools
    instead (the alert's instance is the gq `instance`; the `datasource` line of
    `get_alert` names the gq tool that runs the rule's query). Where it uses
-   `sre-kubernetes`, query the cluster through the Kubernetes tools in your
-   session (e.g. a Kubernetes MCP server); query code through GitHub. You run in
+   `sre-kubernetes`, query the cluster through a Kubernetes MCP server in your
+   session (flux-operator-mcp or similar); only when there is none, use the
+   `sre-kubernetes` skill. Query code through GitHub. You run in
    the background and cannot ask the user: record missing access in the report
    and go on with what you can see.
 3. Stay read-only: diagnose first, query metrics, logs, traces and cluster
