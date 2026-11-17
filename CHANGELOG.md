@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.4.0](https://github.com/Staffbase/gq/compare/v0.3.0...v0.4.0) (2026-11-17)
+
+
+### Features
+
+* add a Makefile to build, install and check gq from a checkout ([85721a0](https://github.com/Staffbase/gq/commit/85721a0f056d38d9f65ad8763681d2bbe2d47460))
+* **mcp:** add list_alerts and get_alert, and the gq alerts / gq alert commands: query the alerts firing in Grafana Alerting, filtered by Grafana with label matchers and state, across all instances at once ([85721a0](https://github.com/Staffbase/gq/commit/85721a0f056d38d9f65ad8763681d2bbe2d47460))
+* **skills:** add the alert-triage skill: triage alerts with gq, one subagent per group of alerts with a likely shared cause ([85721a0](https://github.com/Staffbase/gq/commit/85721a0f056d38d9f65ad8763681d2bbe2d47460))
+
+
+### Bug Fixes
+
+* cut error response bodies at 1 KiB in errors, so an HTML error page no longer fills an agent's context ([85721a0](https://github.com/Staffbase/gq/commit/85721a0f056d38d9f65ad8763681d2bbe2d47460))
+* keep token_command output out of errors, so an auth helper's output never reaches an agent ([85721a0](https://github.com/Staffbase/gq/commit/85721a0f056d38d9f65ad8763681d2bbe2d47460))
+
+
+### Documentation
+
+* **skills:** link the sre-analyze-alert skill source ([#60](https://github.com/Staffbase/gq/issues/60)) ([3b76993](https://github.com/Staffbase/gq/commit/3b769932a469b1a3d5c3cce93e3ab17f19dbd677))
+
 ## [0.3.0](https://github.com/Staffbase/gq/compare/v0.2.0...v0.3.0) (2026-11-06)
 
 
