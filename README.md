@@ -171,6 +171,13 @@ mkdir -p ~/.claude/skills
 ln -s "$PWD/skills/alert-triage" ~/.claude/skills/alert-triage
 ```
 
+The investigating subagents follow the [`sre-analyze-alert`](https://github.com/ricoberger/dotfiles/tree/main/.agents/skills/sre-analyze-alert) skill for their workflow, report format and confidence rubric. Its helper skills `sre-grafana` and `sre-kubernetes` are not needed: the subagents query Grafana through the gq tools and the cluster through a Kubernetes MCP server instead. Without `sre-analyze-alert` the subagents investigate on their own and say so in their report.
+
+```sh
+git clone https://github.com/ricoberger/dotfiles.git ~/.local/share/ricoberger-dotfiles
+ln -s ~/.local/share/ricoberger-dotfiles/.agents/skills/sre-analyze-alert ~/.claude/skills/sre-analyze-alert
+```
+
 ## MCP Server
 
 `gq` can run as an [MCP](https://modelcontextprotocol.io) server over stdio, exposing these tools to AI agents:
