@@ -96,12 +96,15 @@ instructions.
    knowledge. `get_alert` carries no credentials: where the skill uses
    `sre-grafana` or asks for a Grafana URL or token, query through the gq tools
    instead (the alert's instance is the gq `instance`; the `datasource` line of
-   `get_alert` names the gq tool that runs the rule's query). Where it uses
-   `sre-kubernetes`, query the cluster through a Kubernetes MCP server in your
-   session (flux-operator-mcp or similar); only when there is none, use the
-   `sre-kubernetes` skill. Query code through GitHub. You run in
-   the background and cannot ask the user: record missing access in the report
-   and go on with what you can see.
+   `get_alert` names the gq tool that runs the rule's query). When it names no
+   tool (several datasources, an unknown datasource, or the rule is
+   unavailable), say in the report that the rule's query could not be
+   replayed, and mark any gq query you write instead as an approximation.
+   Where the skill uses `sre-kubernetes`, query the cluster through a
+   Kubernetes MCP server in your session (flux-operator-mcp or similar); only
+   when there is none, use the `sre-kubernetes` skill. Query code through
+   GitHub. You run in the background and cannot ask the user: record missing
+   access in the report and go on with what you can see.
 3. Stay read-only: diagnose first, query metrics, logs, traces and cluster
    state, and leave every system as you found it. Show a proposed change
    instead of applying it.
