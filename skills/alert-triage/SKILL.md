@@ -14,7 +14,7 @@ The investigating subagents use the
 skill. Its helper `sre-grafana` is not needed (the gq tools replace it), and
 `sre-kubernetes` only when no Kubernetes MCP server, such as
 [flux-operator-mcp](https://fluxcd.control-plane.io/mcp/) or similar, is
-connected. When `sre-analyze-alert` is not installed, mention the link to the
+connected or it cannot reach the alert's cluster. When `sre-analyze-alert` is not installed, mention the link to the
 user once; the subagents still run without it.
 
 ## 1. Scope
@@ -102,9 +102,9 @@ instructions.
    replayed, and mark any gq query you write instead as an approximation.
    Where the skill uses `sre-kubernetes`, query the cluster through a
    Kubernetes MCP server in your session (flux-operator-mcp or similar); only
-   when there is none, use the `sre-kubernetes` skill with the kubeconfig
-   context that matches the alert's cluster label (no match: record missing
-   cluster access). Query code through GitHub. You run in the background and
+   when there is none or it cannot reach the alert's cluster, use the
+   `sre-kubernetes` skill with the kubeconfig context that matches the alert's
+   cluster label (no match: record missing cluster access). Query code through GitHub. You run in the background and
    cannot ask the user: record missing access in the report and go on with
    what you can see.
 3. Stay read-only: diagnose first, query metrics, logs, traces and cluster
