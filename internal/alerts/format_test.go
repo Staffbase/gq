@@ -33,18 +33,19 @@ func detailFixture() *grafana.AlertDetail {
 	a.Labels = map[string]string{
 		"alertname": "HighErrorRate", "severity": "critical", "__alert_rule_uid__": "rule-1",
 		"grafana_folder": "Shop", "namespace": "shop", "service": "web",
+		"__alert_rule_namespace_uid__": "shop-folder",
 	}
 	a.Annotations = map[string]string{
-		"summary":                      "Error rate above 1/s",
-		"description":                  "Errors on web.\nCheck the logs.",
-		"runbook_url":                  "https://runbooks.example.com/errors",
-		"__values__":                   `{"A":2.5,"B":1}`,
-		"__value_string__":             "[ var='A' value=2.5 ], [ var='B' value=1 ]",
-		"__orgId__":                    "1",
-		"__alert_rule_namespace_uid__": "shop-folder",
-		"__dashboardUid__":             "dash1",
-		"__panelId__":                  "4",
-		"owner":                        "shop-team",
+		"summary":             "Error rate above 1/s",
+		"description":         "Errors on web.\nCheck the logs.",
+		"runbook_url":         "https://runbooks.example.com/errors",
+		"__values__":          `{"A":2.5,"B":1}`,
+		"__value_string__":    "[ var='A' value=2.5 ], [ var='B' value=1 ]",
+		"__orgId__":           "1",
+		"__alertImageToken__": "img-token",
+		"__dashboardUid__":    "dash1",
+		"__panelId__":         "4",
+		"owner":               "shop-team",
 	}
 	return &grafana.AlertDetail{
 		Alert:   a,
@@ -78,7 +79,7 @@ func TestFormatAlert_HeaderFirstWithoutNoise(t *testing.T) {
 		"\n## Links\n\n" +
 		"- dashboard: https://grafana.example.com/d/dash1?orgId=1&viewPanel=4\n" +
 		"- silence: https://grafana.example.com/alerting/silence/new?alertmanager=grafana" +
-		"&matcher=__alert_rule_uid__%3Drule-1&matcher=alertname%3DHighErrorRate&matcher=grafana_folder%3DShop" +
+		"&matcher=__alert_rule_namespace_uid__%3Dshop-folder&matcher=__alert_rule_uid__%3Drule-1&matcher=alertname%3DHighErrorRate&matcher=grafana_folder%3DShop" +
 		"&matcher=namespace%3Dshop&matcher=service%3Dweb&matcher=severity%3Dcritical&orgId=1\n"
 	if got := formatAlert(detailFixture(), "prod"); got != want {
 		t.Errorf("formatAlert mismatch\n--- got ---\n%s\n--- want ---\n%s", got, want)

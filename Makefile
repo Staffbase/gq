@@ -7,6 +7,12 @@ COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)
 
+# The golangci-lint version .github/workflows/ci.yml pins; keep them in step.
+# It runs on the Go version of go.mod, as in CI: an older golangci-lint cannot
+# read packages built by a newer Go.
+GOLANGCI_LINT_VERSION ?= v2.12.2
+GO_VERSION := $(shell awk '/^go /{print $$2}' go.mod)
+
 .DEFAULT_GOAL := help
 
 .PHONY: help
@@ -32,12 +38,8 @@ vet: ## Run go vet
 	go vet ./...
 
 .PHONY: lint
-lint: ## Run golangci-lint (skipped if not installed)
-	@if command -v golangci-lint >/dev/null 2>&1; then \
-	  golangci-lint run; \
-	else \
-	  echo "==> golangci-lint not installed locally; skipping"; \
-	fi
+lint: ## Run golangci-lint at the version CI uses
+	GOTOOLCHAIN=go$(GO_VERSION) go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run
 
 .PHONY: check
 check: vet test lint ## Pre-PR check: vet, test, lint

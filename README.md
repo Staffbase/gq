@@ -21,7 +21,7 @@ The `Makefile` builds with the same version stamp as a release; `make` lists the
 ```sh
 make build     # ./bin/gq
 make install   # into $GOBIN (default ~/go/bin)
-make check     # vet, tests with the race detector, golangci-lint: run before a PR
+make check     # vet, tests with the race detector, golangci-lint at the version CI pins: run before a PR
 ```
 
 ## Configuration
@@ -92,7 +92,7 @@ A long-running MCP server outlives most tokens. Rather than fail every call afte
 { "token_command": "vault read -field=token secret/grafana" }
 ```
 
-On a `401`, `gq` runs the command via `sh -c`, takes its trimmed stdout as the new token, and retries the request once. If the retry also fails, the error surfaces normally — the command runs once per failure, never in a loop. A non-zero exit or empty output is reported as an error, so a broken auth helper says so rather than looking like a Grafana outage. The command's stderr goes to `gq`'s own stderr (your terminal, or the MCP client's log), never into the error message: an auth helper may print secrets, and MCP errors reach the agent.
+On a `401`, `gq` runs the command via `sh -c`, takes its trimmed stdout as the new token, and retries the request once. If the retry also fails, the error surfaces normally — the command runs once per failure, never in a loop. A non-zero exit or empty output is reported as an error, so a broken auth helper says so rather than looking like a Grafana outage. When the command fails, its stderr goes to `gq`'s own stderr (your terminal, or the MCP client's log), never into the error message: an auth helper may print secrets, and MCP errors reach the agent. A successful run drops it, so warnings a helper prints every time stay out of `gq`'s output.
 
 Concurrent calls that all hit an expired token refresh once between them, not once each.
 

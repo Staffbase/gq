@@ -232,27 +232,34 @@ func (c *Client) doOnce(method, endpoint string, body io.Reader, contentType, to
 // whether the command came from a single-instance config, a per-instance
 // override, or a registry-level default — one rule to document, one to test.
 //
-// The command's stderr goes to gq's own stderr (the terminal for the CLI, the
-// client's log for `gq mcp`), never into the error: an auth helper may print
-// secrets, and in MCP mode errors reach the agent and its model provider.
+// When the command fails, its stderr goes to gq's own stderr (the terminal for
+// the CLI, the client's log for `gq mcp`), never into the error: an auth helper
+// may print secrets, and in MCP mode errors reach the agent and its model
+// provider. A successful run drops it, so warnings a helper prints on every run
+// stay out of gq's output.
 func (c *Client) runTokenCommand() (string, error) {
 	command := strings.ReplaceAll(c.TokenCommand, "{url}", c.BaseURL)
 	cmd := exec.Command("sh", "-c", command) //nolint:gosec // user-supplied config
-	cmd.Stderr = os.Stderr
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	out, err := cmd.Output()
-	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			return "", fmt.Errorf("token_command exited %d (its output went to gq's stderr)", exitErr.ExitCode())
-		}
+	token := strings.TrimSpace(string(out))
+	if err == nil && token != "" {
+		return token, nil
+	}
+	_, _ = tokenCommandStderr.Write(stderr.Bytes())
+	var exitErr *exec.ExitError
+	switch {
+	case errors.As(err, &exitErr):
+		return "", fmt.Errorf("token_command exited %d (its output went to gq's stderr)", exitErr.ExitCode())
+	case err != nil:
 		return "", err
 	}
-	token := strings.TrimSpace(string(out))
-	if token == "" {
-		return "", fmt.Errorf("token_command produced empty output")
-	}
-	return token, nil
+	return "", fmt.Errorf("token_command produced empty output")
 }
+
+// tokenCommandStderr receives the stderr of a failed token_command.
+var tokenCommandStderr io.Writer = os.Stderr
 
 // proxy calls path on the datasource uid through Grafana's datasource proxy and
 // returns the body of a 200 response.

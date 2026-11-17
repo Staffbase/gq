@@ -122,10 +122,10 @@ func severityRank(s string) int {
 // Labels and annotations shown elsewhere in formatAlert, or Grafana internals
 // that tell an investigation nothing.
 var (
-	headerLabels      = []string{"alertname", "severity", grafana.RuleUIDLabel, "grafana_folder"}
+	headerLabels      = []string{"alertname", "severity", grafana.RuleUIDLabel, "__alert_rule_namespace_uid__", "grafana_folder"}
 	hiddenAnnotations = []string{
 		"summary", "description", "runbook_url", "__values__", "__value_string__", "__orgId__",
-		"__alert_rule_namespace_uid__", "__dashboardUid__", "__panelId__",
+		"__dashboardUid__", "__panelId__", "__alertImageToken__",
 	}
 )
 
