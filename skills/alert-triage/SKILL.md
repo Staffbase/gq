@@ -9,6 +9,14 @@ This skill needs the gq MCP server (tools `list_alerts` and `get_alert`, next to
 the query tools). When those tools are missing, tell the user to register it,
 e.g. `claude mcp add gq --env GRAFANA_CONFIG=<config> -- gq mcp`, and stop.
 
+The investigating subagents use the
+[`sre-analyze-alert`](https://github.com/ricoberger/dotfiles/tree/main/.agents/skills/sre-analyze-alert)
+skill. Its helper `sre-grafana` is not needed (the gq tools replace it), and
+`sre-kubernetes` only when no Kubernetes MCP server, such as
+[flux-operator-mcp](https://fluxcd.control-plane.io/mcp/) or similar, is
+connected or it cannot reach the alert's cluster. When `sre-analyze-alert` is not installed, mention the link to the
+user once; the subagents still run without it.
+
 ## 1. Scope
 
 Turn the user's words into `list_alerts` arguments. Grafana does the filtering,
@@ -85,13 +93,20 @@ instructions.
 2. Investigate with the `sre-analyze-alert` skill: its workflow, report format
    and confidence rubric. When that skill is not available, say so at the start
    of your report ("sre-analyze-alert skill is missing") and go on with your own
-   knowledge. `get_alert` carries no credentials: query Grafana through the gq
-   tools wherever the skill asks for a Grafana URL or token (the alert's
-   instance is the gq `instance`; the `datasource` line of `get_alert` names the
-   gq tool that runs the rule's query). Query the cluster and code through the
-   other tools in your session (e.g. Kubernetes MCP server, GitHub). You run in
-   the background and cannot ask the user: record missing access in the report
-   and go on with what you can see.
+   knowledge. `get_alert` carries no credentials: where the skill uses
+   `sre-grafana` or asks for a Grafana URL or token, query through the gq tools
+   instead (the alert's instance is the gq `instance`; the `datasource` line of
+   `get_alert` names the gq tool that runs the rule's query). When it names no
+   tool (several datasources, an unknown datasource, or the rule is
+   unavailable), say in the report that the rule's query could not be
+   replayed, and mark any gq query you write instead as an approximation.
+   Where the skill uses `sre-kubernetes`, query the cluster through a
+   Kubernetes MCP server in your session (flux-operator-mcp or similar); only
+   when there is none or it cannot reach the alert's cluster, use the
+   `sre-kubernetes` skill with the kubeconfig context that matches the alert's
+   cluster label (no match: record missing cluster access). Query code through GitHub. You run in the background and
+   cannot ask the user: record missing access in the report and go on with
+   what you can see.
 3. Stay read-only: diagnose first, query metrics, logs, traces and cluster
    state, and leave every system as you found it. Show a proposed change
    instead of applying it.
