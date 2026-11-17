@@ -12,7 +12,7 @@
 // limitations under the License.
 // SPDX-License-Identifier: Apache-2.0
 
-package main
+package alerts
 
 import (
 	"encoding/json"

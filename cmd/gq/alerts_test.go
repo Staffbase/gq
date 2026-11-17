@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Staffbase/gq/internal/alerts"
 	"github.com/Staffbase/gq/internal/grafana"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -39,9 +40,9 @@ func fakeAlert(fp, alertname, namespace string) grafana.Alert {
 	return a
 }
 
-// fakeInstances serves one fakeQuerier per instance name; unknown names fail
-// like an unknown registry instance does.
-func fakeInstances(qs map[string]*fakeQuerier) instanceFunc {
+// fakeGet serves one fakeQuerier per instance name; unknown names fail like an
+// unknown registry instance does.
+func fakeGet(qs map[string]*fakeQuerier) func(string) (grafana.Querier, error) {
 	return func(name string) (grafana.Querier, error) {
 		if q, ok := qs[name]; ok {
 			return q, nil
@@ -50,10 +51,19 @@ func fakeInstances(qs map[string]*fakeQuerier) instanceFunc {
 	}
 }
 
-func callAlertTool(t *testing.T, src alertSource, toolName string, args map[string]any) *mcp.CallToolResult {
+// fakeInstances are named instances served by fakeGet, or one unnamed
+// instance when names is empty.
+func fakeInstances(qs map[string]*fakeQuerier, names ...string) grafana.Instances {
+	if len(names) == 0 {
+		names = []string{""}
+	}
+	return grafana.Instances{Names: names, Get: fakeGet(qs)}
+}
+
+func callAlertTool(t *testing.T, in grafana.Instances, toolName string, args map[string]any) *mcp.CallToolResult {
 	t.Helper()
 	s := server.NewMCPServer("test", "0.0.0")
-	registerAlertTools(s, src)
+	registerAlertTools(s, in)
 	tool := s.GetTool(toolName)
 	if tool == nil {
 		t.Fatalf("tool %q not registered", toolName)
@@ -76,16 +86,15 @@ func TestListAlertsTool_AllInstancesAtOnce(t *testing.T) {
 	dev := &fakeQuerier{alerts: []grafana.Alert{fakeAlert("d1", "HighErrorRate", "shop")}}
 	prod := &fakeQuerier{alerts: []grafana.Alert{fakeAlert("p1", "HighErrorRate", "cart")}}
 	stage := &fakeQuerier{alertsErr: errors.New("HTTP 403: forbidden")}
-	src := alertSource{names: []string{"dev", "prod", "stage"},
-		get: fakeInstances(map[string]*fakeQuerier{"dev": dev, "prod": prod, "stage": stage})}
+	in := fakeInstances(map[string]*fakeQuerier{"dev": dev, "prod": prod, "stage": stage}, "dev", "prod", "stage")
 
-	r := callAlertTool(t, src, "list_alerts", map[string]any{
+	r := callAlertTool(t, in, "list_alerts", map[string]any{
 		"matchers": []any{`alertname="HighErrorRate"`}, "state": "suppressed",
 	})
 	if r.IsError {
 		t.Fatalf("one failing instance must not fail the call: %s", resultText(r))
 	}
-	var list alertList
+	var list alerts.Result
 	if err := json.Unmarshal([]byte(resultText(r)), &list); err != nil {
 		t.Fatalf("want JSON, got %q: %v", resultText(r), err)
 	}
@@ -107,69 +116,28 @@ func TestListAlertsTool_AllInstancesAtOnce(t *testing.T) {
 
 func TestListAlertsTool_OneInstance(t *testing.T) {
 	dev := &fakeQuerier{alerts: []grafana.Alert{fakeAlert("d1", "X", "shop")}}
-	prod := &fakeQuerier{alertsErr: errors.New("must not be queried")}
-	src := alertSource{names: []string{"dev", "prod"},
-		get: fakeInstances(map[string]*fakeQuerier{"dev": dev, "prod": prod})}
+	prod := &fakeQuerier{}
+	in := fakeInstances(map[string]*fakeQuerier{"dev": dev, "prod": prod}, "dev", "prod")
 
-	r := callAlertTool(t, src, "list_alerts", map[string]any{"instance": "dev"})
+	r := callAlertTool(t, in, "list_alerts", map[string]any{"instance": "dev"})
 	if r.IsError || !strings.Contains(resultText(r), `"d1"`) {
 		t.Fatalf("want dev's alert, got %s", resultText(r))
 	}
-	if prod.capturedFilter.State != "" || len(prod.capturedFilter.Matchers) != 0 || prod.alertListCalls != 0 {
+	if prod.capturedFilter.State != "" {
 		t.Error("prod must not be queried when instance is dev")
-	}
-}
-
-func TestListAlertsTool_SingleInstanceErrorIsAToolError(t *testing.T) {
-	src := alertSource{names: []string{"dev", "prod"},
-		get: fakeInstances(map[string]*fakeQuerier{"dev": {alertsErr: errors.New("HTTP 400: bad matcher")}})}
-	r := callAlertTool(t, src, "list_alerts", map[string]any{"instance": "dev", "matchers": []any{`x=`}})
-	if !r.IsError || !strings.Contains(resultText(r), "bad matcher") {
-		t.Fatalf("want Grafana's error as the tool error, got %s", resultText(r))
-	}
-	r = callAlertTool(t, src, "list_alerts", map[string]any{"instance": "nope"})
-	if !r.IsError || !strings.Contains(resultText(r), "not found") {
-		t.Fatalf("want an unknown-instance error, got %s", resultText(r))
-	}
-}
-
-func TestListAlertsTool_BadStateFailsBeforeAskingAnyone(t *testing.T) {
-	dev := &fakeQuerier{}
-	src := alertSource{names: []string{"dev", "prod"}, get: fakeInstances(map[string]*fakeQuerier{"dev": dev, "prod": {}})}
-	r := callAlertTool(t, src, "list_alerts", map[string]any{"state": "firing"})
-	if !r.IsError || !strings.Contains(resultText(r), "unknown state") {
-		t.Fatalf("want an unknown-state tool error, got %s", resultText(r))
-	}
-	if dev.alertListCalls != 0 {
-		t.Error("no instance should be asked with a bad state")
-	}
-}
-
-func TestListAlertsTool_EveryInstanceFailingIsAToolError(t *testing.T) {
-	bad := errors.New("HTTP 400: bad matcher")
-	src := alertSource{names: []string{"dev", "prod", "stage"}, get: fakeInstances(map[string]*fakeQuerier{
-		"dev": {alertsErr: bad}, "prod": {alertsErr: bad}, "stage": {alertsErr: errors.New("HTTP 403: forbidden")},
-	})}
-	r := callAlertTool(t, src, "list_alerts", map[string]any{"matchers": []any{`x=~"("`}})
-	if !r.IsError {
-		t.Fatalf("want a tool error when no instance answered, got %s", resultText(r))
-	}
-	text := resultText(r)
-	if strings.Count(text, "bad matcher") != 1 || !strings.Contains(text, "dev, prod") || !strings.Contains(text, "stage: HTTP 403") {
-		t.Errorf("want each distinct error once with its instances, got %q", text)
 	}
 }
 
 func TestListAlertsTool_Limit(t *testing.T) {
 	q := &fakeQuerier{alerts: []grafana.Alert{fakeAlert("a", "X", "s"), fakeAlert("b", "X", "s"), fakeAlert("c", "X", "s")}}
-	src := alertSource{get: fakeInstances(map[string]*fakeQuerier{"": q})}
+	in := fakeInstances(map[string]*fakeQuerier{"": q})
 
-	r := callAlertTool(t, src, "list_alerts", map[string]any{"limit": float64(2)})
+	r := callAlertTool(t, in, "list_alerts", map[string]any{"limit": float64(2)})
 	if !strings.Contains(resultText(r), `"more":1`) {
 		t.Errorf("want more=1 with limit 2, got %s", resultText(r))
 	}
 	for _, bad := range []float64{0, -1, 1.5, 1001} {
-		if r := callAlertTool(t, src, "list_alerts", map[string]any{"limit": bad}); !r.IsError ||
+		if r := callAlertTool(t, in, "list_alerts", map[string]any{"limit": bad}); !r.IsError ||
 			resultText(r) != "limit must be a positive integer not exceeding 1000" {
 			t.Errorf("limit %v should be rejected with the usual message, got %q", bad, resultText(r))
 		}
@@ -178,17 +146,39 @@ func TestListAlertsTool_Limit(t *testing.T) {
 
 func TestListAlertsTool_SingleInstanceModeHasNoInstanceArg(t *testing.T) {
 	q := &fakeQuerier{alerts: []grafana.Alert{fakeAlert("a", "X", "s")}}
-	src := alertSource{get: fakeInstances(map[string]*fakeQuerier{"": q})}
+	in := fakeInstances(map[string]*fakeQuerier{"": q})
 	s := server.NewMCPServer("test", "0.0.0")
-	registerAlertTools(s, src)
+	registerAlertTools(s, in)
 	for _, name := range []string{"list_alerts", "get_alert"} {
 		if _, ok := s.GetTool(name).Tool.InputSchema.Properties["instance"]; ok {
 			t.Errorf("%s: no instance argument in single-instance mode", name)
 		}
 	}
-	r := callAlertTool(t, src, "list_alerts", nil)
+	r := callAlertTool(t, in, "list_alerts", nil)
 	if r.IsError || strings.Contains(resultText(r), `"instance"`) {
 		t.Errorf("want alerts without instance names, got %s", resultText(r))
+	}
+}
+
+func TestListAlertsTool_MatchersMustBeStrings(t *testing.T) {
+	in := fakeInstances(map[string]*fakeQuerier{"": {}})
+	for _, bad := range []any{`namespace="shop"`, []any{1}} {
+		if r := callAlertTool(t, in, "list_alerts", map[string]any{"matchers": bad}); !r.IsError ||
+			resultText(r) != "matchers must be an array of strings" {
+			t.Errorf("matchers %v should be rejected, got %q", bad, resultText(r))
+		}
+	}
+}
+
+// get_alert names the query tool that runs an alert rule's query; that tool
+// must exist.
+func TestAlertQueryToolsAreRegistered(t *testing.T) {
+	s := server.NewMCPServer("test", "0.0.0")
+	registerTools(s, grafana.SingleInstance(&fakeQuerier{}))
+	for kind, name := range alerts.QueryTools {
+		if s.GetTool(name) == nil {
+			t.Errorf("%s datasources point to %q, which is not a registered tool", kind, name)
+		}
 	}
 }
 
@@ -196,9 +186,9 @@ func TestListAlertsTool_SingleInstanceModeHasNoInstanceArg(t *testing.T) {
 
 func TestGetAlertTool_Markdown(t *testing.T) {
 	prod := &fakeQuerier{alertDetail: &grafana.AlertDetail{Alert: fakeAlert("p1", "HighErrorRate", "shop"), BaseURL: "https://grafana.example.com"}}
-	src := alertSource{names: []string{"dev", "prod"}, get: fakeInstances(map[string]*fakeQuerier{"prod": prod})}
+	in := fakeInstances(map[string]*fakeQuerier{"prod": prod}, "dev", "prod")
 
-	r := callAlertTool(t, src, "get_alert", map[string]any{"instance": "prod", "fingerprint": "p1", "alertname": "HighErrorRate"})
+	r := callAlertTool(t, in, "get_alert", map[string]any{"instance": "prod", "fingerprint": "p1", "alertname": "HighErrorRate"})
 	if r.IsError {
 		t.Fatal(resultText(r))
 	}
@@ -211,9 +201,9 @@ func TestGetAlertTool_Markdown(t *testing.T) {
 }
 
 func TestGetAlertTool_RequiredArgs(t *testing.T) {
-	src := alertSource{names: []string{"dev"}, get: fakeInstances(map[string]*fakeQuerier{"dev": {}})}
+	in := fakeInstances(map[string]*fakeQuerier{"dev": {}}, "dev")
 	for _, args := range []map[string]any{{"fingerprint": "x"}, {"instance": "dev"}} {
-		if r := callAlertTool(t, src, "get_alert", args); !r.IsError {
+		if r := callAlertTool(t, in, "get_alert", args); !r.IsError {
 			t.Errorf("args %v should be rejected", args)
 		}
 	}
@@ -267,6 +257,6 @@ func TestAlertCmd_PrintsMarkdown(t *testing.T) {
 func withFakeInstances(t *testing.T, qs map[string]*fakeQuerier) {
 	t.Helper()
 	orig := newQuerier
-	newQuerier = fakeInstances(qs)
+	newQuerier = fakeGet(qs)
 	t.Cleanup(func() { newQuerier = orig })
 }

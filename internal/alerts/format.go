@@ -12,7 +12,7 @@
 // limitations under the License.
 // SPDX-License-Identifier: Apache-2.0
 
-package main
+package alerts
 
 import (
 	"cmp"
@@ -39,19 +39,19 @@ type instanceAlert struct {
 	grafana.Alert
 }
 
-// alertList is the list_alerts result. Labels every listed alert shares are in
-// CommonLabels once instead of on each alert.
-type alertList struct {
+// Result is a list of alerts, as list_alerts returns it. Labels every listed
+// alert shares are in CommonLabels once instead of on each alert.
+type Result struct {
 	CommonLabels map[string]string `json:"commonLabels,omitempty"`
-	Alerts       []alertSummary    `json:"alerts"`
+	Alerts       []Summary         `json:"alerts"`
 	// Errors maps the instances that could not be queried to the reason.
 	Errors map[string]string `json:"errors,omitempty"`
 	// More counts the alerts left out by the limit.
 	More int `json:"more,omitempty"`
 }
 
-// alertSummary is one alert of an alertList.
-type alertSummary struct {
+// Summary is one alert of a Result.
+type Summary struct {
 	Instance    string            `json:"instance,omitempty"`
 	Fingerprint string            `json:"fingerprint"`
 	State       string            `json:"state"`
@@ -62,7 +62,7 @@ type alertSummary struct {
 
 // compactAlerts sorts the alerts (most severe, then newest first), keeps the
 // first limit of them, and moves the labels they all share to CommonLabels.
-func compactAlerts(alerts []instanceAlert, errs map[string]string, limit int) alertList {
+func compactAlerts(alerts []instanceAlert, errs map[string]string, limit int) Result {
 	alerts = slices.Clone(alerts)
 	slices.SortStableFunc(alerts, func(a, b instanceAlert) int {
 		if c := severityRank(a.Labels["severity"]) - severityRank(b.Labels["severity"]); c != 0 {
@@ -73,7 +73,7 @@ func compactAlerts(alerts []instanceAlert, errs map[string]string, limit int) al
 		}
 		return strings.Compare(a.Instance+"/"+a.Fingerprint, b.Instance+"/"+b.Fingerprint)
 	})
-	list := alertList{Alerts: []alertSummary{}}
+	list := Result{Alerts: []Summary{}}
 	if len(errs) > 0 {
 		list.Errors = errs
 	}
@@ -96,7 +96,7 @@ func compactAlerts(alerts []instanceAlert, errs map[string]string, limit int) al
 	for _, a := range alerts {
 		labels := maps.Clone(a.Labels)
 		maps.DeleteFunc(labels, func(k, _ string) bool { _, common := list.CommonLabels[k]; return common })
-		list.Alerts = append(list.Alerts, alertSummary{
+		list.Alerts = append(list.Alerts, Summary{
 			Instance: a.Instance, Fingerprint: a.Fingerprint, State: a.Status.State,
 			StartsAt: formatTime(a.StartsAt), Summary: oneLine(a.Annotations["summary"]), Labels: labels,
 		})
@@ -202,7 +202,7 @@ func formatAlert(d *grafana.AlertDetail, instance string) string {
 			labeled("health", oneLine(r.Health)), labeled("last eval", formatTime(r.LastEvaluation))), " · "))
 		item("last error", oneLine(r.LastError))
 		ds := oneLineJoin(r.DatasourceUIDs)
-		if tool := queryTools[d.DatasourceKind]; tool != "" {
+		if tool := QueryTools[d.DatasourceKind]; tool != "" {
 			ds += " (" + string(d.DatasourceKind) + ") → " + tool
 		}
 		item("datasource", ds)
@@ -238,12 +238,12 @@ func withQuery(u string, q url.Values) string {
 	return u + "?" + q.Encode()
 }
 
-// queryTools names the gq tool that queries each kind of datasource.
-var queryTools = map[grafana.DatasourceKind]string{
-	grafana.KindMetrics:  toolQueryMetrics,
-	grafana.KindLogs:     toolQueryLogs,
-	grafana.KindTraces:   toolQueryTraces,
-	grafana.KindProfiles: toolQueryProfile,
+// QueryTools names the gq MCP tool that queries each kind of datasource.
+var QueryTools = map[grafana.DatasourceKind]string{
+	grafana.KindMetrics:  "query_metrics",
+	grafana.KindLogs:     "query_logs",
+	grafana.KindTraces:   "query_traces",
+	grafana.KindProfiles: "query_profile",
 }
 
 // silenceURL opens Grafana's "new silence" form of the org prefilled with all

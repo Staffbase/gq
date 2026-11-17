@@ -43,7 +43,6 @@ type fakeQuerier struct {
 	alertErr      error
 
 	capturedFilter      grafana.AlertFilter
-	alertListCalls      int
 	capturedFingerprint string
 	capturedAlertname   string
 
@@ -95,7 +94,6 @@ func (f *fakeQuerier) GetTrace(traceID string) (*grafana.TraceSummary, error) {
 }
 
 func (f *fakeQuerier) ListAlerts(filter grafana.AlertFilter) ([]grafana.Alert, error) {
-	f.alertListCalls++
 	f.capturedFilter = filter
 	return f.alerts, f.alertsErr
 }

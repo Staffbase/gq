@@ -153,6 +153,9 @@ func LoadRegistry(path string) (*Registry, error) {
 		return nil, fmt.Errorf("registry file %s: instances map is empty or missing", path)
 	}
 	for name, inst := range reg.Instances {
+		if name == "" {
+			return nil, fmt.Errorf("registry file %s: instance names must not be empty", path)
+		}
 		if inst.URL == "" {
 			return nil, fmt.Errorf("registry file %s: instance %q: url is required", path, name)
 		}

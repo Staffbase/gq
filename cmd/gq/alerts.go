@@ -19,123 +19,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync"
 
+	"github.com/Staffbase/gq/internal/alerts"
 	"github.com/Staffbase/gq/internal/grafana"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/spf13/cobra"
 )
 
-const (
-	defaultAlertLimit = 100
-	maxAlertLimit     = 1000
-)
-
-// instanceFunc resolves an instance name ("" in single-instance mode) to a
-// Querier.
-type instanceFunc func(name string) (grafana.Querier, error)
-
-// alertSource is where alerts come from: every registry instance, or the one
-// Grafana of single-instance mode.
-type alertSource struct {
-	names []string // registry instance names; nil in single-instance mode
-	get   instanceFunc
-}
-
-// multiInstance reports registry mode: several named instances.
-func (s alertSource) multiInstance() bool { return len(s.names) > 0 }
-
-// list asks the instance, or every instance at once when instance is "", for
-// the alerts matching f. Grafana filters; a failing instance lands in the
-// result's errors, unless no instance answered: then the call fails.
-func (s alertSource) list(instance string, f grafana.AlertFilter, limit int) (alertList, error) {
-	if err := f.Validate(); err != nil {
-		return alertList{}, err
-	}
-	targets := s.names
-	if instance != "" || !s.multiInstance() {
-		targets = []string{instance}
-	}
-	type result struct {
-		alerts []grafana.Alert
-		err    error
-	}
-	results := make([]result, len(targets))
-	var wg sync.WaitGroup
-	for i, name := range targets {
-		wg.Go(func() {
-			q, err := s.get(name)
-			if err == nil {
-				results[i].alerts, err = q.ListAlerts(f)
-			}
-			results[i].err = err
-		})
-	}
-	wg.Wait()
-
-	if len(targets) == 1 && results[0].err != nil {
-		return alertList{}, results[0].err
-	}
-	var all []instanceAlert
-	errs := map[string]string{}
-	for i, name := range targets {
-		if results[i].err != nil {
-			errs[name] = results[i].err.Error()
-			continue
-		}
-		for _, a := range results[i].alerts {
-			all = append(all, instanceAlert{Instance: name, Alert: a})
-		}
-	}
-	if len(errs) == len(targets) {
-		return alertList{}, noInstanceAnswered(targets, errs)
-	}
-	return compactAlerts(all, errs, limit), nil
-}
-
-// noInstanceAnswered names each distinct error once, with the instances that
-// got it: a bad matcher fails every instance the same way.
-func noInstanceAnswered(targets []string, errs map[string]string) error {
-	var msgs []string
-	byMsg := map[string][]string{}
-	for _, name := range targets {
-		msg := errs[name]
-		if byMsg[msg] == nil {
-			msgs = append(msgs, msg)
-		}
-		byMsg[msg] = append(byMsg[msg], name)
-	}
-	parts := make([]string, len(msgs))
-	for i, msg := range msgs {
-		parts[i] = strings.Join(byMsg[msg], ", ") + ": " + msg
-	}
-	return fmt.Errorf("no instance answered: %s", strings.Join(parts, "; "))
-}
-
-// alert renders one alert of an instance as Markdown.
-func (s alertSource) alert(instance, fingerprint, alertname string) (string, error) {
-	if fingerprint == "" {
-		return "", fmt.Errorf("fingerprint is required")
-	}
-	q, err := s.get(instance) // in registry mode, "" fails naming the instances
-	if err != nil {
-		return "", err
-	}
-	d, err := q.GetAlert(fingerprint, alertname)
-	if err != nil {
-		return "", err
-	}
-	return formatAlert(d, instance), nil
-}
-
 // registerAlertTools registers list_alerts and get_alert. Unlike the query
 // tools, list_alerts takes an optional instance: without it, every instance
 // is asked at once.
-func registerAlertTools(s *server.MCPServer, src alertSource) {
+func registerAlertTools(s *server.MCPServer, in grafana.Instances) {
 	var listInstance, getInstance []mcp.ToolOption
-	if src.multiInstance() {
-		available := "Available: " + strings.Join(src.names, ", ")
+	if in.Named() {
+		available := "Available: " + strings.Join(in.Names, ", ")
 		listInstance = append(listInstance, mcp.WithString("instance",
 			mcp.Description("Grafana instance name; omit to ask every instance at once. "+available)))
 		getInstance = append(getInstance, mcp.WithString("instance", mcp.Required(),
@@ -154,9 +52,9 @@ func registerAlertTools(s *server.MCPServer, src alertSource) {
 				mcp.WithReadOnlyHintAnnotation(true),
 				mcp.WithArray("matchers", mcp.WithStringItems(),
 					mcp.Description("Label matchers that must all match (operators =, !=, =~, !~), e.g. [\"namespace=\\\"shop\\\"\"].")),
-				mcp.WithString("state", mcp.Enum(alertStateNames()...),
+				mcp.WithString("state", mcp.Enum(alerts.StateNames()...),
 					mcp.Description("Alert state, active by default; suppressed means silenced or inhibited.")),
-				mcp.WithNumber("limit", mcp.Description(fmt.Sprintf("Max alerts to return (default %d, max %d); more counts the rest.", defaultAlertLimit, maxAlertLimit))),
+				mcp.WithNumber("limit", mcp.Description(fmt.Sprintf("Max alerts to return (default %d, max %d); more counts the rest.", alerts.DefaultLimit, alerts.MaxLimit))),
 			)...,
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -167,11 +65,11 @@ func registerAlertTools(s *server.MCPServer, src alertSource) {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
 			state, _ := args["state"].(string)
-			limit, err := intArg(args, "limit", defaultAlertLimit, maxAlertLimit)
+			limit, err := intArg(args, "limit", alerts.DefaultLimit, alerts.MaxLimit)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
-			list, err := src.list(instance, grafana.AlertFilter{Matchers: matchers, State: grafana.AlertState(state)}, limit)
+			list, err := alerts.List(in, instance, grafana.AlertFilter{Matchers: matchers, State: grafana.AlertState(state)}, limit)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
@@ -197,22 +95,13 @@ func registerAlertTools(s *server.MCPServer, src alertSource) {
 			instance, _ := args["instance"].(string)
 			fingerprint, _ := args["fingerprint"].(string)
 			alertname, _ := args["alertname"].(string)
-			text, err := src.alert(instance, fingerprint, alertname)
+			text, err := alerts.Describe(in, instance, fingerprint, alertname)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
 			return mcp.NewToolResultText(text), nil
 		},
 	)
-}
-
-// alertStateNames lists the alert states as strings, the default first.
-func alertStateNames() []string {
-	names := make([]string, len(grafana.AlertStates))
-	for i, st := range grafana.AlertStates {
-		names[i] = string(st)
-	}
-	return names
 }
 
 // stringList reads a JSON array of strings from a tool argument.
@@ -245,8 +134,8 @@ func buildAlertsCmd() *cobra.Command {
 		RunE: runAlerts,
 	}
 	cmd.Flags().StringArrayP("matcher", "m", nil, "Label matcher that must match (repeatable; =, !=, =~, !~)")
-	cmd.Flags().String("state", string(grafana.StateActive), strings.Join(alertStateNames(), ", "))
-	cmd.Flags().Int("limit", defaultAlertLimit, "Max alerts to print")
+	cmd.Flags().String("state", string(grafana.StateActive), strings.Join(alerts.StateNames(), ", "))
+	cmd.Flags().Int("limit", alerts.DefaultLimit, "Max alerts to print")
 	cmd.Flags().String("instance", "", "Grafana instance name (registry mode); default: all instances")
 	return cmd
 }
@@ -263,18 +152,18 @@ func buildAlertCmd() *cobra.Command {
 	return cmd
 }
 
-// cliAlertSource lists every registry instance when GRAFANA_CONFIG holds a
-// registry; otherwise it is single-instance mode.
-func cliAlertSource() (alertSource, error) {
-	src := alertSource{get: func(name string) (grafana.Querier, error) { return newQuerier(name) }}
+// cliInstances are the registry's instances when GRAFANA_CONFIG holds a
+// registry, otherwise the one unnamed instance. newQuerier creates the clients.
+func cliInstances() (grafana.Instances, error) {
 	reg, err := registryFromEnv()
 	if err != nil {
-		return src, err
+		return grafana.Instances{}, err
 	}
+	names := []string{""}
 	if reg != nil {
-		src.names = reg.InstanceNames()
+		names = reg.InstanceNames()
 	}
-	return src, nil
+	return grafana.Instances{Names: names, Get: newQuerier}, nil
 }
 
 func runAlerts(cmd *cobra.Command, _ []string) error {
@@ -282,14 +171,14 @@ func runAlerts(cmd *cobra.Command, _ []string) error {
 	state, _ := cmd.Flags().GetString("state")
 	limit, _ := cmd.Flags().GetInt("limit")
 	instance, _ := cmd.Flags().GetString("instance")
-	if limit <= 0 || limit > maxAlertLimit {
-		return fmt.Errorf("--limit must be between 1 and %d", maxAlertLimit)
+	if limit <= 0 || limit > alerts.MaxLimit {
+		return fmt.Errorf("--limit must be between 1 and %d", alerts.MaxLimit)
 	}
-	src, err := cliAlertSource()
+	in, err := cliInstances()
 	if err != nil {
 		return err
 	}
-	list, err := src.list(instance, grafana.AlertFilter{Matchers: matchers, State: grafana.AlertState(state)}, limit)
+	list, err := alerts.List(in, instance, grafana.AlertFilter{Matchers: matchers, State: grafana.AlertState(state)}, limit)
 	if err != nil {
 		return err
 	}
@@ -304,11 +193,11 @@ func runAlerts(cmd *cobra.Command, _ []string) error {
 func runAlert(cmd *cobra.Command, args []string) error {
 	alertname, _ := cmd.Flags().GetString("alertname")
 	instance, _ := cmd.Flags().GetString("instance")
-	src, err := cliAlertSource()
+	in, err := cliInstances()
 	if err != nil {
 		return err
 	}
-	text, err := src.alert(instance, args[0], alertname)
+	text, err := alerts.Describe(in, instance, args[0], alertname)
 	if err != nil {
 		return err
 	}

@@ -162,6 +162,7 @@ func TestLoadRegistry_RejectsIncompleteInstances(t *testing.T) {
 		"missing metrics uid":  `{"instances":{"p":{"url":"https://x","token":"t","logs_datasource_uid":"l"}}}`,
 		"empty instances map":  `{"instances":{}}`,
 		"instances wrong type": `{"instances":[]}`,
+		"empty instance name":  `{"instances":{"":{"url":"https://x","token":"t","logs_datasource_uid":"l","metrics_datasource_uid":"m"}}}`,
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
