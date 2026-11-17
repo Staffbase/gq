@@ -15,6 +15,7 @@
 package grafana
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -189,11 +190,50 @@ func TestTokenCommand_FailureIsReported(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error when token_command fails")
 	}
-	// The exit code and stderr are the only clue the user gets about why
-	// authentication is not recovering — keep them in the message.
-	for _, want := range []string{"token refresh failed", "exited 3", "no credentials"} {
+	// The exit code tells the user why authentication is not recovering.
+	for _, want := range []string{"token refresh failed", "exited 3"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("expected %q in error, got: %v", want, err)
+		}
+	}
+	// The command's own output stays out: an auth helper may print secrets, and
+	// in MCP mode the error reaches the agent and its model provider.
+	if strings.Contains(err.Error(), "no credentials") {
+		t.Errorf("token_command stderr leaked into the error: %v", err)
+	}
+}
+
+// A helper's stderr is for the user when it fails. Helpers like gcloud or az
+// warn on every run, so a successful run keeps it out of gq's output.
+func TestTokenCommand_StderrOnlyWhenItFails(t *testing.T) {
+	var stderr bytes.Buffer
+	orig := tokenCommandStderr
+	tokenCommandStderr = &stderr
+	t.Cleanup(func() { tokenCommandStderr = orig })
+	srv := newTokenServer(t, "good")
+
+	c := &Client{
+		BaseURL:              srv.URL,
+		Token:                "bad",
+		TokenCommand:         "echo 'warning: update available' >&2; echo good",
+		LogsDatasourceUID:    "victorialogs",
+		MetricsDatasourceUID: "victoriametrics",
+	}
+	if _, err := c.QueryMetricsInstant("up", ""); err != nil {
+		t.Fatal(err)
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("a succeeding helper's stderr must stay quiet, got %q", stderr.String())
+	}
+
+	for _, command := range []string{"echo 'no credentials' >&2; exit 3", "echo 'no credentials' >&2"} {
+		stderr.Reset()
+		c.Token, c.TokenCommand = "bad", command
+		if _, err := c.QueryMetricsInstant("up", ""); err == nil {
+			t.Fatalf("%q: want an error", command)
+		}
+		if !strings.Contains(stderr.String(), "no credentials") {
+			t.Errorf("%q: a failing helper's stderr must reach gq's stderr, got %q", command, stderr.String())
 		}
 	}
 }

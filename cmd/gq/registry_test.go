@@ -103,9 +103,9 @@ func TestRegistryFromEnv_MissingFileIsFatal(t *testing.T) {
 	}
 }
 
-// -- clientCache / the instance tool parameter --
+// -- the instance tool parameter --
 
-func newTestCache(t *testing.T) *clientCache {
+func testRegistryInstances(t *testing.T) grafana.Instances {
 	t.Helper()
 	setConfig(t, registryJSON)
 	reg, err := registryFromEnv()
@@ -115,67 +115,14 @@ func newTestCache(t *testing.T) *clientCache {
 	if reg == nil {
 		t.Fatal("expected a registry")
 	}
-	return newClientCache(reg)
-}
-
-func TestClientCache_ReturnsTheSameClientPerInstance(t *testing.T) {
-	cc := newTestCache(t)
-	first, err := cc.querierFor(map[string]any{"instance": "prod"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, err := cc.querierFor(map[string]any{"instance": "prod"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Identity matters: a fresh client per call would throw away a token that
-	// token_command just refreshed, so every call would pay the 401 again.
-	if first != second {
-		t.Error("expected the cached client to be reused across calls")
-	}
-
-	other, err := cc.querierFor(map[string]any{"instance": "dev"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if other == first {
-		t.Error("expected a distinct client per instance")
-	}
-}
-
-func TestClientCache_MissingInstanceListsTheOptions(t *testing.T) {
-	cc := newTestCache(t)
-	for _, args := range []map[string]any{
-		{},
-		{"instance": ""},
-		{"instance": 42},
-	} {
-		_, err := cc.querierFor(args)
-		if err == nil {
-			t.Fatalf("expected an error for args %v", args)
-		}
-		for _, want := range []string{"dev", "prod"} {
-			if !strings.Contains(err.Error(), want) {
-				t.Errorf("expected %q in error for args %v, got: %v", want, args, err)
-			}
-		}
-	}
-}
-
-func TestClientCache_UnknownInstanceIsAToolError(t *testing.T) {
-	cc := newTestCache(t)
-	if _, err := cc.querierFor(map[string]any{"instance": "staging"}); err == nil {
-		t.Fatal("expected an error for an unknown instance")
-	}
+	return grafana.RegistryInstances(reg)
 }
 
 // In registry mode every tool must advertise the instance parameter, or an agent
 // has no way to know it is required until the call fails.
 func TestRegistryMode_AllToolsRequireInstance(t *testing.T) {
-	cc := newTestCache(t)
 	s := server.NewMCPServer("test", "0.0.0")
-	registerTools(s, cc.querierFor,
-		mcp.WithString("instance", mcp.Required(), mcp.Description("Grafana instance name.")))
+	registerTools(s, testRegistryInstances(t))
 
 	for _, name := range []string{"query_logs", "query_metrics", "query_metrics_instant", "list_label_values"} {
 		tool := s.GetTool(name)
@@ -198,22 +145,24 @@ func TestRegistryMode_AllToolsRequireInstance(t *testing.T) {
 // A tool call that omits instance must come back as a tool error the agent can
 // read, not a protocol error that kills the session.
 func TestRegistryMode_MissingInstanceIsAReadableToolError(t *testing.T) {
-	cc := newTestCache(t)
 	s := server.NewMCPServer("test", "0.0.0")
-	registerTools(s, cc.querierFor,
-		mcp.WithString("instance", mcp.Required(), mcp.Description("Grafana instance name.")))
+	registerTools(s, testRegistryInstances(t))
 
 	tool := s.GetTool("query_logs")
 	req := mcp.CallToolRequest{}
 	req.Params.Name = "query_logs"
-	req.Params.Arguments = map[string]any{"query": "severity:ERROR"}
-
-	result, err := tool.Handler(context.Background(), req)
-	if err != nil {
-		t.Fatalf("expected a tool error, got a protocol error: %v", err)
-	}
-	if !result.IsError {
-		t.Fatal("expected IsError to be set")
+	for _, args := range []map[string]any{
+		{"query": "severity:ERROR"},
+		{"query": "severity:ERROR", "instance": 42},
+	} {
+		req.Params.Arguments = args
+		result, err := tool.Handler(context.Background(), req)
+		if err != nil {
+			t.Fatalf("expected a tool error, got a protocol error: %v", err)
+		}
+		if !result.IsError || !strings.Contains(result.Content[0].(mcp.TextContent).Text, "dev, prod") {
+			t.Errorf("args %v: want a tool error listing the instances, got %+v", args, result)
+		}
 	}
 }
 
@@ -221,7 +170,7 @@ func TestRegistryMode_MissingInstanceIsAReadableToolError(t *testing.T) {
 func TestSingleInstanceMode_HasNoInstanceParameter(t *testing.T) {
 	s := server.NewMCPServer("test", "0.0.0")
 	q := &fakeQuerier{}
-	registerTools(s, func(map[string]any) (grafana.Querier, error) { return q, nil })
+	registerTools(s, grafana.SingleInstance(q))
 
 	tool := s.GetTool("query_logs")
 	if _, ok := tool.Tool.InputSchema.Properties["instance"]; ok {

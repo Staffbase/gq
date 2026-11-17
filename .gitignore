@@ -1,2 +1,4 @@
 plugin/dist/
 dist/
+bin/
+coverage.out

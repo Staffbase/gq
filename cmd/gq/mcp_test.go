@@ -29,7 +29,7 @@ import (
 func callTool(t *testing.T, q *fakeQuerier, toolName string, args map[string]any) *mcp.CallToolResult {
 	t.Helper()
 	s := server.NewMCPServer("test", "0.0.0")
-	registerTools(s, func(_ map[string]any) (grafana.Querier, error) { return q, nil })
+	registerTools(s, grafana.SingleInstance(q))
 
 	tool := s.GetTool(toolName)
 	if tool == nil {

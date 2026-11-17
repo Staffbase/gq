@@ -23,8 +23,8 @@ import (
 	"time"
 )
 
-// DefaultProfilesDatasourceUID is the UID mops provisions for Pyroscope on
-// every observatory instance.
+// DefaultProfilesDatasourceUID is the Pyroscope datasource UID gq assumes when
+// the config sets none.
 const DefaultProfilesDatasourceUID = "pyroscope"
 
 const pyroscopeQuerier = "querier.v1.QuerierService/"

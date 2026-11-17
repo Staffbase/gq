@@ -26,8 +26,8 @@ import (
 	"time"
 )
 
-// DefaultTracesDatasourceUID is the UID mops provisions for VictoriaTraces on
-// every observatory instance.
+// DefaultTracesDatasourceUID is the VictoriaTraces datasource UID gq assumes
+// when the config sets none.
 const DefaultTracesDatasourceUID = "victoriatraces"
 
 // The datasource is of type tempo; its URL already ends in /select/tempo, so
