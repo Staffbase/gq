@@ -193,7 +193,7 @@ func LoadConfigFile(path string) (registry *Registry, single *Config, err error)
 
 // NewClientFromConfig loads a single-instance config file and returns a Client.
 // Returns an error if the file is a registry — use LoadRegistry + NewClientFromInstance instead.
-func NewClientFromConfig(path string) (*Client, error) {
+func NewClientFromConfig(path, userAgent string) (*Client, error) {
 	reg, cfg, err := LoadConfigFile(path)
 	if err != nil {
 		return nil, err
@@ -205,6 +205,7 @@ func NewClientFromConfig(path string) (*Client, error) {
 		BaseURL:               strings.TrimRight(cfg.URL, "/"),
 		Token:                 cfg.Token,
 		TokenCommand:          cfg.TokenCommand,
+		UserAgent:             userAgent,
 		LogsDatasourceUID:     cfg.LogsDatasourceUID,
 		MetricsDatasourceUID:  cfg.MetricsDatasourceUID,
 		TracesDatasourceUID:   cfg.TracesDatasourceUID,
@@ -213,11 +214,12 @@ func NewClientFromConfig(path string) (*Client, error) {
 }
 
 // NewClientFromInstance builds a Client from a resolved InstanceConfig.
-func NewClientFromInstance(inst InstanceConfig) *Client {
+func NewClientFromInstance(inst InstanceConfig, userAgent string) *Client {
 	return &Client{
 		BaseURL:               strings.TrimRight(inst.URL, "/"),
 		Token:                 inst.Token,
 		TokenCommand:          inst.TokenCommand,
+		UserAgent:             userAgent,
 		LogsDatasourceUID:     inst.LogsDatasourceUID,
 		MetricsDatasourceUID:  inst.MetricsDatasourceUID,
 		TracesDatasourceUID:   inst.TracesDatasourceUID,

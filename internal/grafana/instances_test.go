@@ -25,7 +25,7 @@ func testRegistryInstances(t *testing.T) Instances {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return RegistryInstances(reg)
+	return RegistryInstances(reg, DefaultUserAgent)
 }
 
 func TestRegistryInstances_ReturnTheSameClientPerInstance(t *testing.T) {
