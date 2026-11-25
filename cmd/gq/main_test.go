@@ -24,6 +24,7 @@ import (
 type fakeQuerier struct {
 	logsResult    []byte
 	logsErr       error
+	logsTruncated bool
 	metricsResult []byte
 	metricsErr    error
 	instantResult []byte
@@ -55,12 +56,12 @@ type fakeQuerier struct {
 	capturedType  string
 }
 
-func (f *fakeQuerier) QueryLogs(query, start, end string, limit int) ([]byte, error) {
+func (f *fakeQuerier) QueryLogs(query, start, end string, limit int) ([]byte, bool, error) {
 	f.capturedQuery = query
 	f.capturedStart = start
 	f.capturedEnd = end
 	f.capturedLimit = limit
-	return f.logsResult, f.logsErr
+	return f.logsResult, f.logsTruncated, f.logsErr
 }
 
 func (f *fakeQuerier) QueryMetricsRange(query, start, end, step string) ([]byte, error) {

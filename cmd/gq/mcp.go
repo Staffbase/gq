@@ -15,6 +15,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -126,11 +127,11 @@ func registerTools(s *server.MCPServer, in grafana.Instances) {
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
-			out, err := q.QueryLogs(query, start, end, limit)
+			out, truncated, err := q.QueryLogs(query, start, end, limit)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
-			return mcp.NewToolResultText(string(out)), nil
+			return mcp.NewToolResultText(logsText(out, truncated)), nil
 		},
 	)
 
@@ -173,7 +174,7 @@ func registerTools(s *server.MCPServer, in grafana.Instances) {
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
-			return mcp.NewToolResultText(prettyJSON(raw)), nil
+			return mcp.NewToolResultText(compactJSON(raw)), nil
 		},
 	)
 
@@ -203,7 +204,7 @@ func registerTools(s *server.MCPServer, in grafana.Instances) {
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
-			return mcp.NewToolResultText(prettyJSON(raw)), nil
+			return mcp.NewToolResultText(compactJSON(raw)), nil
 		},
 	)
 
@@ -236,8 +237,7 @@ func registerTools(s *server.MCPServer, in grafana.Instances) {
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
-			out, _ := json.MarshalIndent(values, "", "  ")
-			return mcp.NewToolResultText(string(out)), nil
+			return jsonResult(values), nil
 		},
 	)
 
@@ -282,8 +282,7 @@ func registerTools(s *server.MCPServer, in grafana.Instances) {
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
-			out, _ := json.MarshalIndent(hits, "", "  ")
-			return mcp.NewToolResultText(string(out)), nil
+			return jsonResult(hits), nil
 		},
 	)
 
@@ -311,8 +310,7 @@ func registerTools(s *server.MCPServer, in grafana.Instances) {
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
-			out, _ := json.MarshalIndent(sum, "", "  ")
-			return mcp.NewToolResultText(string(out)), nil
+			return jsonResult(sum), nil
 		},
 	)
 
@@ -338,8 +336,7 @@ func registerTools(s *server.MCPServer, in grafana.Instances) {
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
-			out, _ := json.MarshalIndent(types, "", "  ")
-			return mcp.NewToolResultText(string(out)), nil
+			return jsonResult(types), nil
 		},
 	)
 
@@ -369,8 +366,7 @@ func registerTools(s *server.MCPServer, in grafana.Instances) {
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
-			out, _ := json.MarshalIndent(values, "", "  ")
-			return mcp.NewToolResultText(string(out)), nil
+			return jsonResult(values), nil
 		},
 	)
 
@@ -411,8 +407,7 @@ func registerTools(s *server.MCPServer, in grafana.Instances) {
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
-			out, _ := json.MarshalIndent(sum, "", "  ")
-			return mcp.NewToolResultText(string(out)), nil
+			return jsonResult(sum), nil
 		},
 	)
 }
@@ -456,11 +451,47 @@ func toolArgs(req mcp.CallToolRequest) map[string]any {
 	return map[string]any{}
 }
 
-func prettyJSON(raw []byte) string {
-	var v interface{}
-	if err := json.Unmarshal(raw, &v); err != nil {
+// compactJSON strips whitespace from raw JSON: indentation costs tokens the
+// model re-reads on every later turn. Invalid JSON is returned as is. For raw
+// bytes from Grafana; use jsonResult for Go values.
+func compactJSON(raw []byte) string {
+	var b bytes.Buffer
+	if err := json.Compact(&b, raw); err != nil {
 		return string(raw)
 	}
-	out, _ := json.MarshalIndent(v, "", "  ")
-	return string(out)
+	return b.String()
+}
+
+// jsonResult returns v as compact JSON text. For Go values; use compactJSON for
+// raw bytes from Grafana, which are already JSON and need no re-encoding.
+func jsonResult(v any) *mcp.CallToolResult {
+	out, err := json.Marshal(v)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error())
+	}
+	return mcp.NewToolResultText(string(out))
+}
+
+// maxLogBytes caps a query_logs result (about 25k tokens) so one wide query
+// cannot flood the context. The line limit alone is not enough: a log line can be huge.
+const maxLogBytes = 100_000
+
+// truncMarker is the last line of a cut query_logs result.
+const truncMarker = `{"_truncated":true,"note":"result cut (limit or size cap); narrow the query or select fewer fields with '| fields a,b'"}`
+
+// logsText turns NDJSON into the tool result: whole lines only, at most
+// maxLogBytes, plus truncMarker when anything was cut. If the first line alone
+// exceeds the cap, only the marker is returned: half a JSON line is no use.
+func logsText(out []byte, truncated bool) string {
+	if len(out) > maxLogBytes {
+		truncated = true
+		out = out[:max(0, bytes.LastIndexByte(out[:maxLogBytes+1], '\n'))]
+	}
+	switch {
+	case !truncated:
+		return string(out)
+	case len(out) == 0:
+		return truncMarker
+	}
+	return string(out) + "\n" + truncMarker
 }
