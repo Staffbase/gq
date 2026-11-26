@@ -176,7 +176,7 @@ func TestLoadRegistry_RejectsIncompleteInstances(t *testing.T) {
 // NewClientFromConfig cannot pick an instance for you; it must say so rather
 // than guess or report a confusing missing-url error.
 func TestNewClientFromConfig_RejectsRegistryWithGuidance(t *testing.T) {
-	_, err := NewClientFromConfig(writeConfig(t, twoInstances))
+	_, err := NewClientFromConfig(writeConfig(t, twoInstances), DefaultUserAgent)
 	if err == nil {
 		t.Fatal("expected an error when pointing NewClientFromConfig at a registry")
 	}
@@ -194,7 +194,7 @@ func TestNewClientFromInstance_CarriesTokenCommand(t *testing.T) {
 		TokenCommand:         "mint",
 		LogsDatasourceUID:    "l",
 		MetricsDatasourceUID: "m",
-	})
+	}, DefaultUserAgent)
 	if c.BaseURL != "https://x.example.com" {
 		t.Errorf("expected the trailing slash trimmed, got %q", c.BaseURL)
 	}

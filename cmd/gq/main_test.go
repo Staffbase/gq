@@ -16,6 +16,8 @@ package main
 
 import (
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/Staffbase/gq/internal/grafana"
@@ -347,5 +349,67 @@ func TestProfileTypesCommand(t *testing.T) {
 	cmd.SetArgs([]string{"profile-types"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// The CLI and the MCP server must each send their own User-Agent. This is the
+// wiring that can regress, so every path goes through the real constructors:
+// env vars and a registry file, for both.
+func TestUserAgentWiring(t *testing.T) {
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get("User-Agent")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	useEnv := func(t *testing.T) {
+		t.Setenv("GRAFANA_CONFIG", "")
+		t.Setenv("GRAFANA_URL", srv.URL)
+		t.Setenv("GRAFANA_SERVICE_ACCOUNT_TOKEN", "t")
+		t.Setenv("GRAFANA_LOGS_DATASOURCE_UID", "l")
+		t.Setenv("GRAFANA_METRICS_DATASOURCE_UID", "m")
+	}
+	useRegistry := func(t *testing.T) {
+		setConfig(t, `{"instances":{"dev":{"url":"`+srv.URL+`","token":"t","logs_datasource_uid":"l","metrics_datasource_uid":"m"}}}`)
+	}
+	cli := func(instance string) func() (grafana.Querier, error) {
+		return func() (grafana.Querier, error) { return newQuerier(instance) }
+	}
+	mcpGet := func(instance string) func() (grafana.Querier, error) {
+		return func() (grafana.Querier, error) {
+			in, err := mcpInstances()
+			if err != nil {
+				return nil, err
+			}
+			return in.Get(instance)
+		}
+	}
+
+	tests := []struct {
+		name  string
+		setup func(*testing.T)
+		build func() (grafana.Querier, error)
+		mode  string
+	}{
+		{"cli, env vars", useEnv, cli(""), "cli"},
+		{"cli, registry --instance", useRegistry, cli("dev"), "cli"},
+		{"mcp, env vars", useEnv, mcpGet(""), "mcp"},
+		{"mcp, registry", useRegistry, mcpGet("dev"), "mcp"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.setup(t)
+			q, err := tt.build()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := q.QueryMetricsInstant("up", ""); err != nil {
+				t.Fatal(err)
+			}
+			if want := "gq/" + version + " (" + tt.mode + ")"; got != want {
+				t.Errorf("sent %q, want %q", got, want)
+			}
+		})
 	}
 }

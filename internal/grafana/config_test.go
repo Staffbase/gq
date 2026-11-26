@@ -115,7 +115,7 @@ func TestNewClientFromConfig_Success(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	c, err := NewClientFromConfig(path)
+	c, err := NewClientFromConfig(path, DefaultUserAgent)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestNewClientFromEnv_ConfigFilePrecedence(t *testing.T) {
 	t.Setenv("GRAFANA_URL", "https://from-env.example.com")
 	t.Setenv("GRAFANA_SERVICE_ACCOUNT_TOKEN", "env_token")
 
-	c, err := NewClientFromEnv()
+	c, err := NewClientFromEnv(DefaultUserAgent)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestNewClientFromEnv_BadConfigFile(t *testing.T) {
 	t.Setenv("GRAFANA_COOKIE", "")
 	t.Setenv("GRAFANA_SERVICE_ACCOUNT_TOKEN", "")
 
-	_, err := NewClientFromEnv()
+	_, err := NewClientFromEnv(DefaultUserAgent)
 	if err == nil {
 		t.Fatal("expected error for bad config file path")
 	}

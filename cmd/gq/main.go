@@ -38,9 +38,15 @@ var newQuerier func(instance string) (grafana.Querier, error) = func(instance st
 		if err != nil {
 			return nil, err
 		}
-		return grafana.NewClientFromInstance(inst), nil
+		return grafana.NewClientFromInstance(inst, userAgent("cli")), nil
 	}
-	return grafana.NewClientFromEnv()
+	return grafana.NewClientFromEnv(userAgent("cli"))
+}
+
+// userAgent names this build and how it is used ("cli" or "mcp"), so access logs
+// can tell people at a terminal from agents.
+func userAgent(mode string) string {
+	return fmt.Sprintf("gq/%s (%s)", version, mode)
 }
 
 func main() {

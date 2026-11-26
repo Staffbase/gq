@@ -57,9 +57,9 @@ func mcpInstances() (grafana.Instances, error) {
 		return grafana.Instances{}, err
 	}
 	if reg != nil {
-		return grafana.RegistryInstances(reg), nil
+		return grafana.RegistryInstances(reg, userAgent("mcp")), nil
 	}
-	client, err := grafana.NewClientFromEnv()
+	client, err := grafana.NewClientFromEnv(userAgent("mcp"))
 	if err != nil {
 		return grafana.Instances{}, err
 	}

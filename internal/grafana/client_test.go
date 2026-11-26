@@ -29,7 +29,7 @@ import (
 func TestNewClientFromEnv_MissingURL(t *testing.T) {
 	t.Setenv("GRAFANA_URL", "")
 	t.Setenv("GRAFANA_COOKIE", "session=abc")
-	_, err := NewClientFromEnv()
+	_, err := NewClientFromEnv(DefaultUserAgent)
 	if err == nil {
 		t.Fatal("expected error when GRAFANA_URL is unset")
 	}
@@ -39,7 +39,7 @@ func TestNewClientFromEnv_MissingAuth(t *testing.T) {
 	t.Setenv("GRAFANA_URL", "http://grafana.example.com")
 	t.Setenv("GRAFANA_COOKIE", "")
 	t.Setenv("GRAFANA_SERVICE_ACCOUNT_TOKEN", "")
-	_, err := NewClientFromEnv()
+	_, err := NewClientFromEnv(DefaultUserAgent)
 	if err == nil {
 		t.Fatal("expected error when neither GRAFANA_COOKIE nor GRAFANA_SERVICE_ACCOUNT_TOKEN is set")
 	}
@@ -51,7 +51,7 @@ func TestNewClientFromEnv_CookieAuth(t *testing.T) {
 	t.Setenv("GRAFANA_LOGS_DATASOURCE_UID", "test-logs")
 	t.Setenv("GRAFANA_METRICS_DATASOURCE_UID", "test-metrics")
 	t.Setenv("GRAFANA_SERVICE_ACCOUNT_TOKEN", "")
-	c, err := NewClientFromEnv()
+	c, err := NewClientFromEnv(DefaultUserAgent)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestNewClientFromEnv_TokenAuth(t *testing.T) {
 	t.Setenv("GRAFANA_SERVICE_ACCOUNT_TOKEN", "glsa_token123")
 	t.Setenv("GRAFANA_LOGS_DATASOURCE_UID", "test-logs")
 	t.Setenv("GRAFANA_METRICS_DATASOURCE_UID", "test-metrics")
-	c, err := NewClientFromEnv()
+	c, err := NewClientFromEnv(DefaultUserAgent)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestNewClientFromEnv_CookiePrecedence(t *testing.T) {
 	t.Setenv("GRAFANA_SERVICE_ACCOUNT_TOKEN", "glsa_token")
 	t.Setenv("GRAFANA_LOGS_DATASOURCE_UID", "test-logs")
 	t.Setenv("GRAFANA_METRICS_DATASOURCE_UID", "test-metrics")
-	c, err := NewClientFromEnv()
+	c, err := NewClientFromEnv(DefaultUserAgent)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -385,4 +385,24 @@ func init() {
 	_ = os.Unsetenv("GRAFANA_SERVICE_ACCOUNT_TOKEN")
 	_ = os.Unsetenv("GRAFANA_LOGS_DATASOURCE_UID")
 	_ = os.Unsetenv("GRAFANA_METRICS_DATASOURCE_UID")
+}
+
+func TestDo_SendsUserAgent(t *testing.T) {
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get("User-Agent")
+	}))
+	defer srv.Close()
+	c := newTestClient(srv)
+	for _, tt := range []struct{ set, want string }{{"", DefaultUserAgent}, {"gq/1.2.3 (mcp)", "gq/1.2.3 (mcp)"}} {
+		c.UserAgent = tt.set
+		resp, err := c.do("GET", srv.URL, nil, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if got != tt.want {
+			t.Errorf("UserAgent %q sent %q, want %q", tt.set, got, tt.want)
+		}
+	}
 }

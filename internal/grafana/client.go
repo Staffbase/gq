@@ -18,6 +18,7 @@ package grafana
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -38,6 +39,9 @@ const defaultHTTPTimeout = 30 * time.Second
 // maxErrorBody caps how much of an error response ends up in an error: enough
 // for a datasource's message, not a whole HTML error page in an agent's context.
 const maxErrorBody = 1024
+
+// DefaultUserAgent is sent when a Client has no UserAgent of its own.
+const DefaultUserAgent = "gq"
 
 // Querier is the interface implemented by Client.
 // Both the gq CLI and the `gq mcp` server depend on this interface;
@@ -85,6 +89,10 @@ type Client struct {
 	// ProfilesDatasourceUID is the Grafana datasource UID for Pyroscope.
 	// Optional: DefaultProfilesDatasourceUID is used when empty.
 	ProfilesDatasourceUID string
+	// UserAgent is sent on every request so Grafana and proxy logs can tell gq
+	// traffic apart from curl and other callers. Set by the constructors; empty
+	// (a Client built by hand) means DefaultUserAgent.
+	UserAgent string
 	// HTTPClient is optional; when nil a client with defaultHTTPTimeout is used.
 	HTTPClient *http.Client
 }
@@ -106,11 +114,13 @@ func (c *Client) httpClient() *http.Client {
 // All fields except the traces and profiles UIDs are required. Find datasource UIDs in Grafana under
 // Administration → Data Sources → <datasource> → UID.
 //
+// userAgent is what the Client sends on every request.
+//
 // Returns an error if any required field is missing.
-func NewClientFromEnv() (*Client, error) {
+func NewClientFromEnv(userAgent string) (*Client, error) {
 	// 1. Config file path from env.
 	if cfgPath := os.Getenv("GRAFANA_CONFIG"); cfgPath != "" {
-		return NewClientFromConfig(cfgPath)
+		return NewClientFromConfig(cfgPath, userAgent)
 	}
 
 	// 2. Direct env vars.
@@ -137,6 +147,7 @@ func NewClientFromEnv() (*Client, error) {
 		Token:                 token,
 		LogsDatasourceUID:     logsUID,
 		MetricsDatasourceUID:  metricsUID,
+		UserAgent:             userAgent,
 		TracesDatasourceUID:   os.Getenv("GRAFANA_TRACES_DATASOURCE_UID"),
 		ProfilesDatasourceUID: os.Getenv("GRAFANA_PROFILES_DATASOURCE_UID"),
 	}, nil
@@ -214,6 +225,7 @@ func (c *Client) doOnce(method, endpoint string, body io.Reader, contentType, to
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
+	req.Header.Set("User-Agent", cmp.Or(c.UserAgent, DefaultUserAgent))
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}
