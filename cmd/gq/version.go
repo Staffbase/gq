@@ -16,6 +16,7 @@ package main
 
 import (
 	"fmt"
+	"runtime/debug"
 
 	"github.com/spf13/cobra"
 )
@@ -27,6 +28,16 @@ var (
 	commit  = "none"
 	date    = "unknown"
 )
+
+// `go install …@latest` doesn't stamp -ldflags, so fall back to the module version.
+func init() {
+	if version != "dev" {
+		return
+	}
+	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+		version = bi.Main.Version
+	}
+}
 
 func buildVersionCmd() *cobra.Command {
 	return &cobra.Command{

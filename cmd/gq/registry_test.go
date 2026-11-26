@@ -115,7 +115,7 @@ func testRegistryInstances(t *testing.T) grafana.Instances {
 	if reg == nil {
 		t.Fatal("expected a registry")
 	}
-	return grafana.RegistryInstances(reg)
+	return grafana.RegistryInstances(reg, grafana.DefaultUserAgent)
 }
 
 // In registry mode every tool must advertise the instance parameter, or an agent

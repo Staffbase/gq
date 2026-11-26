@@ -45,7 +45,8 @@ func SingleInstance(q Querier) Instances {
 
 // RegistryInstances serves the registry's instances. Each client is created on
 // first use and kept, so a token refreshed after a 401 serves later calls too.
-func RegistryInstances(reg *Registry) Instances {
+// Each client sends userAgent.
+func RegistryInstances(reg *Registry, userAgent string) Instances {
 	var mu sync.Mutex
 	clients := map[string]*Client{}
 	names := reg.InstanceNames()
@@ -62,7 +63,7 @@ func RegistryInstances(reg *Registry) Instances {
 		if err != nil {
 			return nil, err
 		}
-		c := NewClientFromInstance(inst)
+		c := NewClientFromInstance(inst, userAgent)
 		clients[name] = c
 		return c, nil
 	}}
