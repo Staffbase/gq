@@ -102,7 +102,7 @@ func registerTools(s *server.MCPServer, in grafana.Instances) {
 					"Query VictoriaLogs using LogsQL syntax via Grafana proxy. Returns NDJSON log entries. "+
 						"Example queries: 'k8s.namespace.name:flink severity:ERROR _time:1h', "+
 						"'service.name:my-service _msg:timeout _time:30m'. "+
-						"Returns at most `limit` lines and 100 KB; a final {\"_truncated\":true} line means more matched "+
+						"Returns at most `limit` lines and about 100 KB; a final {\"_truncated\":true} line means more matched "+
 						"(raising limit will not get past the byte cap; narrow the query or use '| fields a,b').",
 				),
 				mcp.WithString("query", mcp.Required(),
@@ -479,13 +479,14 @@ func jsonResult(v any) *mcp.CallToolResult {
 
 // maxLogBytes caps a query_logs result (about 25k tokens) so one wide query
 // cannot flood the context. The line limit alone is not enough: a log line can be huge.
+// Approximate: truncMarker is appended on top, so a cut result can exceed it by ~120 bytes.
 const maxLogBytes = 100_000
 
 // truncMarker is the last line of a cut query_logs result.
 const truncMarker = `{"_truncated":true,"note":"result cut (limit or size cap); narrow the query or select fewer fields with '| fields a,b'"}`
 
 // logsText turns NDJSON into the tool result: whole lines only, at most
-// maxLogBytes, plus truncMarker when anything was cut. If the first line alone
+// about maxLogBytes (truncMarker is added on top) when anything was cut. If the first line alone
 // exceeds the cap, only the marker is returned: half a JSON line is no use.
 func logsText(out []byte, truncated bool) string {
 	if len(out) > maxLogBytes {
