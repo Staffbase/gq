@@ -72,6 +72,19 @@ func TestQueryLogsTool_DefaultLimit(t *testing.T) {
 	}
 }
 
+func TestQueryLogsTool_Truncated(t *testing.T) {
+	q := &fakeQuerier{logsResult: []byte("{\"a\":1}\n{\"a\":2}"), logsTruncated: true}
+	text := callTool(t, q, "query_logs", map[string]any{"query": "*", "limit": float64(2)}).Content[0].(mcp.TextContent).Text
+	if want := "{\"a\":1}\n{\"a\":2}\n" + truncMarker; text != want {
+		t.Errorf("got %q, want %q", text, want)
+	}
+	q.logsTruncated = false
+	text = callTool(t, q, "query_logs", map[string]any{"query": "*", "limit": float64(2)}).Content[0].(mcp.TextContent).Text
+	if strings.Contains(text, "_truncated") {
+		t.Errorf("unexpected truncation marker: %q", text)
+	}
+}
+
 func TestQueryLogsTool_ClientError(t *testing.T) {
 	q := &fakeQuerier{logsErr: errors.New("HTTP 401: Unauthorized")}
 	result := callTool(t, q, "query_logs", map[string]any{"query": "*"})
@@ -104,15 +117,16 @@ func TestQueryMetricsTool_ClientError(t *testing.T) {
 	}
 }
 
-func TestQueryMetricsTool_PrettyJSON(t *testing.T) {
-	raw := `{"status":"success","data":{"resultType":"matrix","result":[]}}`
+func TestQueryMetricsTool_CompactJSON(t *testing.T) {
+	raw := "{\n  \"status\": \"success\",\n  \"data\": {\"resultType\": \"matrix\", \"result\": []}\n}"
 	q := &fakeQuerier{metricsResult: []byte(raw)}
 	result := callTool(t, q, "query_metrics", map[string]any{"query": "up"})
 	if result.IsError {
 		t.Fatalf("unexpected error")
 	}
-	if !strings.Contains(result.Content[0].(mcp.TextContent).Text, "\n") {
-		t.Errorf("expected pretty-printed JSON")
+	const want = `{"status":"success","data":{"resultType":"matrix","result":[]}}`
+	if got := result.Content[0].(mcp.TextContent).Text; got != want {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }
 
@@ -189,7 +203,7 @@ func TestQueryTraceByIDTool(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("unexpected error: %v", result.Content)
 	}
-	if !strings.Contains(result.Content[0].(mcp.TextContent).Text, `"rootService": "web"`) || q.capturedQuery != "010203" {
+	if !strings.Contains(result.Content[0].(mcp.TextContent).Text, `"rootService":"web"`) || q.capturedQuery != "010203" {
 		t.Errorf("unexpected result %v, id %q", result.Content, q.capturedQuery)
 	}
 }
@@ -222,7 +236,7 @@ func TestQueryProfileTool_PassesSelectorAndLimit(t *testing.T) {
 	if q.capturedQuery != `{service_name="x"}` || q.capturedLimit != 5 {
 		t.Errorf("selector %q, limit %d", q.capturedQuery, q.capturedLimit)
 	}
-	if !strings.Contains(result.Content[0].(mcp.TextContent).Text, `"name": "work"`) {
+	if !strings.Contains(result.Content[0].(mcp.TextContent).Text, `"name":"work"`) {
 		t.Errorf("unexpected result %v", result.Content)
 	}
 }
@@ -245,5 +259,33 @@ func TestQueryProfileLabelValuesTool_DefaultsToServiceName(t *testing.T) {
 	callTool(t, q, "query_profile_label_values", map[string]any{})
 	if q.capturedQuery != "service_name" {
 		t.Errorf("label = %q", q.capturedQuery)
+	}
+}
+
+func TestLogsText(t *testing.T) {
+	line := strings.Repeat("x", maxLogBytes/3) // two fit under the cap, three do not
+	tests := []struct {
+		name      string
+		out       string
+		truncated bool
+		want      string
+	}{
+		{"uncut", "a\nb", false, "a\nb"},
+		{"flagged by QueryLogs", "a\nb", true, "a\nb\n" + truncMarker},
+		{"byte cap drops the partial line", line + "\n" + line + "\n" + line, false, line + "\n" + line + "\n" + truncMarker},
+		{"first line over the cap gives only the marker", strings.Repeat("x", maxLogBytes+1) + "\nb", false, truncMarker},
+		{"empty and flagged", "", true, truncMarker},
+	}
+	for _, tt := range tests {
+		if got := logsText([]byte(tt.out), tt.truncated); got != tt.want {
+			t.Errorf("%s: got %d bytes %.60q, want %d bytes", tt.name, len(got), got, len(tt.want))
+		}
+	}
+}
+
+func TestJSONResultKeepsHTMLChars(t *testing.T) {
+	got := jsonResult(map[string]string{"fn": "<&T as Debug>::fmt"}).Content[0].(mcp.TextContent).Text
+	if want := `{"fn":"<&T as Debug>::fmt"}`; got != want {
+		t.Fatalf("got %s, want %s", got, want)
 	}
 }

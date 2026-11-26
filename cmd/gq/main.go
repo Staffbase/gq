@@ -130,7 +130,9 @@ func runQuery(cmd *cobra.Command, _ []string) error {
 	start, _ := cmd.Flags().GetString("start")
 	end, _ := cmd.Flags().GetString("end")
 	limit, _ := cmd.Flags().GetInt("limit")
-	out, err := q.QueryLogs(query, start, end, limit)
+	// The truncated flag is for the MCP tool; the CLI prints what --limit asked for,
+	// as it always has.
+	out, _, err := q.QueryLogs(query, start, end, limit)
 	if err != nil {
 		return err
 	}

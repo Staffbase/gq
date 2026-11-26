@@ -47,7 +47,7 @@ const DefaultUserAgent = "gq"
 // Both the gq CLI and the `gq mcp` server depend on this interface;
 // tests inject a fake implementation.
 type Querier interface {
-	QueryLogs(query, start, end string, limit int) ([]byte, error)
+	QueryLogs(query, start, end string, limit int) (out []byte, truncated bool, err error)
 	QueryMetricsRange(query, start, end, step string) ([]byte, error)
 	QueryMetricsInstant(query, t string) ([]byte, error)
 	ListLabelValues(label, match string) ([]string, error)
@@ -297,16 +297,19 @@ func (c *Client) call(method, endpoint string, body io.Reader, contentType strin
 	return out, nil
 }
 
-// QueryLogs runs a LogsQL query against VictoriaLogs via the Grafana proxy.
-// Returns raw NDJSON bytes.
-func (c *Client) QueryLogs(query, start, end string, limit int) ([]byte, error) {
+// QueryLogs runs a LogsQL query against VictoriaLogs via the Grafana proxy and
+// returns raw NDJSON with blank lines dropped.
+//
+// It asks for one line more than limit; truncated reports that this extra line
+// existed, i.e. more logs matched than were returned. limit <= 0 means no limit.
+func (c *Client) QueryLogs(query, start, end string, limit int) (out []byte, truncated bool, err error) {
 	startTS, err := resolveTime(start)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	endTS, err := resolveTime(end)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	form := url.Values{}
 	form.Set("query", query)
@@ -317,23 +320,37 @@ func (c *Client) QueryLogs(query, start, end string, limit int) ([]byte, error) 
 		form.Set("end", endTS)
 	}
 	if limit > 0 {
-		form.Set("limit", fmt.Sprintf("%d", limit))
+		form.Set("limit", fmt.Sprintf("%d", limit+1))
 	}
 
 	raw, err := c.proxy(c.LogsDatasourceUID, "POST", "select/logsql/query",
 		strings.NewReader(form.Encode()), "application/x-www-form-urlencoded")
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
-	// NDJSON: drop blank lines.
-	var lines []string
-	for _, line := range strings.Split(string(raw), "\n") {
-		if line = strings.TrimRight(line, "\r"); line != "" {
-			lines = append(lines, line)
+	var buf bytes.Buffer
+	n := 0
+	for rest := raw; len(rest) > 0; {
+		line := rest
+		if i := bytes.IndexByte(rest, '\n'); i >= 0 {
+			line, rest = rest[:i], rest[i+1:]
+		} else {
+			rest = nil
 		}
+		if line = bytes.TrimRight(line, "\r"); len(line) == 0 {
+			continue
+		}
+		if limit > 0 && n == limit {
+			return buf.Bytes(), true, nil
+		}
+		if n > 0 {
+			buf.WriteByte('\n')
+		}
+		buf.Write(line)
+		n++
 	}
-	return []byte(strings.Join(lines, "\n")), nil
+	return buf.Bytes(), false, nil
 }
 
 // QueryMetricsRange runs a PromQL range query against VictoriaMetrics via the Grafana proxy.

@@ -128,7 +128,7 @@ func TestQueryLogs_Success(t *testing.T) {
 		if r.FormValue("query") != `severity:ERROR` {
 			t.Errorf("unexpected query: %q", r.FormValue("query"))
 		}
-		if r.FormValue("limit") != "5" {
+		if r.FormValue("limit") != "6" { // limit+1: the extra line probes for truncation
 			t.Errorf("unexpected limit: %q", r.FormValue("limit"))
 		}
 		if _, err := fmt.Fprint(w, lines); err != nil {
@@ -139,12 +139,27 @@ func TestQueryLogs_Success(t *testing.T) {
 
 	c := newTestClient(srv)
 	c.BaseURL = srv.URL
-	out, err := c.QueryLogs("severity:ERROR", "", "", 5)
+	out, truncated, err := c.QueryLogs("severity:ERROR", "", "", 5)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if string(out) != lines {
-		t.Errorf("unexpected output: %q", string(out))
+	if string(out) != lines || truncated {
+		t.Errorf("unexpected output: %q (truncated %v)", string(out), truncated)
+	}
+}
+
+func TestQueryLogs_TruncatesAtLimit(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, "{\"n\":1}\r\n\n{\"n\":2}\n{\"n\":3}\n")
+	}))
+	defer srv.Close()
+
+	out, truncated, err := newTestClient(srv).QueryLogs("*", "", "", 2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if want := "{\"n\":1}\n{\"n\":2}"; string(out) != want || !truncated {
+		t.Errorf("got %q (truncated %v), want %q (truncated)", out, truncated, want)
 	}
 }
 
@@ -155,7 +170,7 @@ func TestQueryLogs_HTTPError(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(srv)
-	_, err := c.QueryLogs("*", "", "", 10)
+	_, _, err := c.QueryLogs("*", "", "", 10)
 	if err == nil {
 		t.Fatal("expected error on 401")
 	}
@@ -171,7 +186,7 @@ func TestQueryLogs_EmptyResult(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(srv)
-	out, err := c.QueryLogs("*", "", "", 10)
+	out, _, err := c.QueryLogs("*", "", "", 10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -190,7 +205,7 @@ func TestQueryLogs_SendsCookieHeader(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(srv)
-	_, _ = c.QueryLogs("*", "", "", 10)
+	_, _, _ = c.QueryLogs("*", "", "", 10)
 }
 
 func TestQueryLogs_SendsBearerToken(t *testing.T) {
@@ -203,7 +218,7 @@ func TestQueryLogs_SendsBearerToken(t *testing.T) {
 	defer srv.Close()
 
 	c := &Client{BaseURL: srv.URL, Token: "glsa_abc", LogsDatasourceUID: "victorialogs", MetricsDatasourceUID: "victoriametrics"}
-	_, _ = c.QueryLogs("*", "", "", 10)
+	_, _, _ = c.QueryLogs("*", "", "", 10)
 }
 
 // -- QueryMetricsRange tests --
