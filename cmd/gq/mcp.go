@@ -101,7 +101,9 @@ func registerTools(s *server.MCPServer, in grafana.Instances) {
 				mcp.WithDescription(
 					"Query VictoriaLogs using LogsQL syntax via Grafana proxy. Returns NDJSON log entries. "+
 						"Example queries: 'k8s.namespace.name:flink severity:ERROR _time:1h', "+
-						"'service.name:my-service _msg:timeout _time:30m'",
+						"'service.name:my-service _msg:timeout _time:30m'. "+
+						"Returns at most `limit` lines and 100 KB; a final {\"_truncated\":true} line means more matched "+
+						"(raising limit will not get past the byte cap; narrow the query or use '| fields a,b').",
 				),
 				mcp.WithString("query", mcp.Required(),
 					mcp.Description("LogsQL query expression. Use field:value syntax for filtering, _time:Xm for time range."),
@@ -465,11 +467,14 @@ func compactJSON(raw []byte) string {
 // jsonResult returns v as compact JSON text. For Go values; use compactJSON for
 // raw bytes from Grafana, which are already JSON and need no re-encoding.
 func jsonResult(v any) *mcp.CallToolResult {
-	out, err := json.Marshal(v)
-	if err != nil {
+	// No HTML escaping: it would turn <, >, & in profile function names into 6-char escapes.
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
 		return mcp.NewToolResultError(err.Error())
 	}
-	return mcp.NewToolResultText(string(out))
+	return mcp.NewToolResultText(strings.TrimSuffix(b.String(), "\n"))
 }
 
 // maxLogBytes caps a query_logs result (about 25k tokens) so one wide query

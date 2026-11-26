@@ -282,3 +282,10 @@ func TestLogsText(t *testing.T) {
 		}
 	}
 }
+
+func TestJSONResultKeepsHTMLChars(t *testing.T) {
+	got := jsonResult(map[string]string{"fn": "<&T as Debug>::fmt"}).Content[0].(mcp.TextContent).Text
+	if want := `{"fn":"<&T as Debug>::fmt"}`; got != want {
+		t.Fatalf("got %s, want %s", got, want)
+	}
+}
