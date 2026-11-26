@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0](https://github.com/Staffbase/gq/compare/v0.4.0...v0.5.0) (2026-11-26)
+
+
+### Features
+
+* **mcp:** return compact JSON and cap query_logs output ([#64](https://github.com/Staffbase/gq/issues/64)) ([b853579](https://github.com/Staffbase/gq/commit/b85357991c3c716f47e1959264ac33ef892cc208))
+* send a User-Agent naming the gq version and mode ([#63](https://github.com/Staffbase/gq/issues/63)) ([a6e49d6](https://github.com/Staffbase/gq/commit/a6e49d60b43484abb6cc05ed21f1623f42ad9c23))
+
 ## [0.4.0](https://github.com/Staffbase/gq/compare/v0.3.0...v0.4.0) (2026-11-17)
 
 
